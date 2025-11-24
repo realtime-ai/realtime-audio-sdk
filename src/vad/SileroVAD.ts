@@ -19,13 +19,15 @@ interface SileroVADEvents {
   'speech-end': (data: VADEventData) => void;
 }
 
+type VADState = 'silence' | 'potential_start' | 'speaking' | 'potential_end';
+
 /**
  * Silero VAD implementation using ONNX Runtime
  */
 export class SileroVAD extends EventEmitter<SileroVADEvents> {
   private session: any | null = null;
   private config: Required<SileroVADConfig>;
-  private state: 'non-speech' | 'speech' = 'non-speech';
+  private state: VADState = 'silence';
 
   // Model states
   private stateTensor: any | null = null; // State tensor [2, 1, 128] for Silero v5
@@ -34,18 +36,16 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
   // Buffer management
   private audioBuffer: Float32Array[] = [];
   private speechStartTime: number = 0;
-  private consecutiveSilenceMs: number = 0;
+  private speechEndCandidateTime: number = 0;
   private speechStartBufferIndex: number = 0; // Track buffer index when speech starts
+  private potentialSpeechDurationMs: number = 0;
+  private potentialSilenceDurationMs: number = 0;
   private frameSize: number = 512; // v5 model default
 
   // Sample buffer for handling misaligned chunks
   private sampleBuffer: Float32Array = new Float32Array(0);
   private lastProbability: number = 0;
-  private lastIsSpeech: boolean = false;
   private lastTimestamp: number = 0; // Track last processed timestamp
-
-  // Probability tracking
-  private positiveSpeechFrames: number = 0;
 
   constructor(config: SileroVADConfig) {
     super();
@@ -138,7 +138,7 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
 
     // Limit buffer size ONLY when not in speech state
     // During speech, we need to keep all audio data for the segment
-    if (this.state === 'non-speech') {
+    if (this.state === 'silence') {
       // Keep enough frames for pre-padding (with some extra margin)
       const prePadSamples = (this.config.preSpeechPadDuration * 16000) / 1000;
       const prePadFrames = Math.ceil(prePadSamples / audioData.length);
@@ -169,9 +169,6 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
       frameCount++;
       this.lastProbability = probability;
 
-      // Store probability for return value
-      // (Real-time probability is now available via the main audio event)
-
       offset += this.frameSize;
     }
 
@@ -182,33 +179,15 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
       this.sampleBuffer = new Float32Array(0);
     }
 
-    // Calculate result based on processed frames
-    let finalProbability: number;
-    let isSpeech: boolean;
+    const processedDurationMs = frameCount > 0
+      ? frameCount * ((this.frameSize / 16000) * 1000)
+      : (audioData.length / 16000) * 1000;
 
-    if (frameCount > 0) {
-      // We processed at least one frame
-      finalProbability = totalProbability / frameCount;
-      isSpeech = this.updateVADState(finalProbability, timestamp);
-      this.lastIsSpeech = isSpeech;
-    } else {
-      // No complete frame available, use last known state
-      finalProbability = this.lastProbability;
-      isSpeech = this.lastIsSpeech;
+    const finalProbability = frameCount > 0
+      ? (totalProbability / frameCount)
+      : this.lastProbability;
 
-      // Still update timing for silence duration tracking
-      if (!isSpeech && this.state === 'speech') {
-        const frameTimeMs = (audioData.length / 16000) * 1000;
-        this.consecutiveSilenceMs += frameTimeMs;
-
-        // Check if we should end speech based on silence duration
-        if (this.consecutiveSilenceMs >= this.config.silenceDuration) {
-          this.endSpeech(timestamp, finalProbability);
-          isSpeech = false;
-          this.lastIsSpeech = false;
-        }
-      }
-    }
+    const isSpeech = this.updateVADState(finalProbability, timestamp, processedDurationMs);
 
     return {
       isSpeech,
@@ -248,62 +227,119 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
   }
 
   /**
-   * Update VAD state based on probability
+   * Update VAD state based on probability and elapsed time
    */
-  private updateVADState(probability: number, timestamp: number): boolean {
-    if (this.state === 'non-speech') {
-      // Check for speech start
-      if (probability > this.config.positiveSpeechThreshold) {
-        console.log(`[VAD] Speech START - probability: ${probability.toFixed(3)}, threshold: ${this.config.positiveSpeechThreshold}, timestamp: ${timestamp.toFixed(3)}s`);
-        this.state = 'speech';
-        this.speechStartTime = timestamp;
-        this.consecutiveSilenceMs = 0;
-        this.positiveSpeechFrames = 1;
+  private updateVADState(probability: number, timestamp: number, processedDurationMs: number): boolean {
+    const durationMs = processedDurationMs > 0
+      ? processedDurationMs
+      : (this.frameSize / 16000) * 1000;
 
-        // Record buffer index for pre-padding
-        // Calculate how many frames to include for pre-padding (default 800ms)
-        const avgFrameLength = this.audioBuffer.length > 0
-          ? this.audioBuffer[this.audioBuffer.length - 1].length
-          : 320; // Default 20ms frame at 16kHz
-        const prePadSamples = (this.config.preSpeechPadDuration * 16000) / 1000;
-        const prePadFrames = Math.ceil(prePadSamples / avgFrameLength);
-        this.speechStartBufferIndex = Math.max(0, this.audioBuffer.length - prePadFrames);
+    const positiveThreshold = this.config.positiveSpeechThreshold;
+    const negativeThreshold = this.config.negativeSpeechThreshold;
 
-        // Emit speech start event
-        const eventData: VADEventData = {
-          isSpeech: true,
-          probability,
-          timestamp
-        };
-        this.emit('speech-start', eventData);
-      }
-    } else if (this.state === 'speech') {
-      // In speech state
-      if (probability < this.config.negativeSpeechThreshold) {
-        // Accumulate silence time
-        const frameTimeMs = (this.frameSize / 16000) * 1000;
-        this.consecutiveSilenceMs += frameTimeMs;
-        console.log(`[VAD] Silence accumulating: ${this.consecutiveSilenceMs.toFixed(0)}ms / ${this.config.silenceDuration}ms (prob: ${probability.toFixed(3)})`);
-
-        // Check if speech should end
-        if (this.consecutiveSilenceMs >= this.config.silenceDuration) {
-          console.log(`[VAD] Speech END - silence duration reached`);
-          this.endSpeech(timestamp, probability);
+    switch (this.state) {
+      case 'silence': {
+        if (probability > positiveThreshold) {
+          console.log(`[VAD] Potential speech detected - probability ${probability.toFixed(3)}, timestamp: ${timestamp.toFixed(3)}s`);
+          this.state = 'potential_start';
+          this.speechStartTime = timestamp;
+          this.potentialSpeechDurationMs = durationMs;
+          this.potentialSilenceDurationMs = 0;
         }
-      } else if (probability > this.config.positiveSpeechThreshold) {
-        // Speech continues, reset silence timer
-        if (this.consecutiveSilenceMs > 0) {
-          console.log(`[VAD] Speech continues, resetting silence timer (was ${this.consecutiveSilenceMs.toFixed(0)}ms)`);
-        }
-        this.consecutiveSilenceMs = 0;
-        this.positiveSpeechFrames++;
-      } else {
-        // Probability between thresholds - treat as uncertain
-        console.log(`[VAD] Uncertain state - prob: ${probability.toFixed(3)} (between ${this.config.negativeSpeechThreshold} and ${this.config.positiveSpeechThreshold})`);
+        break;
       }
+      case 'potential_start': {
+        if (probability > positiveThreshold) {
+          this.potentialSpeechDurationMs += durationMs;
+          if (this.potentialSpeechDurationMs >= this.config.minSpeechDuration) {
+            this.confirmSpeechStart(timestamp, probability);
+          }
+        } else if (probability < negativeThreshold) {
+          console.log(`[VAD] Potential speech cancelled - fell below negative threshold (${probability.toFixed(3)})`);
+          this.resetToSilence();
+        }
+        break;
+      }
+      case 'speaking': {
+        if (probability < negativeThreshold) {
+          console.log(`[VAD] Potential speech end detected - probability ${probability.toFixed(3)}`);
+          this.state = 'potential_end';
+          this.potentialSilenceDurationMs = durationMs;
+          this.speechEndCandidateTime = timestamp;
+        } else {
+          this.potentialSilenceDurationMs = 0;
+          this.speechEndCandidateTime = 0;
+        }
+        break;
+      }
+      case 'potential_end': {
+        if (probability < negativeThreshold) {
+          this.potentialSilenceDurationMs += durationMs;
+          console.log(`[VAD] Silence accumulating: ${this.potentialSilenceDurationMs.toFixed(0)}ms / ${this.config.silenceDuration}ms`);
+          if (this.potentialSilenceDurationMs >= this.config.silenceDuration) {
+            console.log(`[VAD] Speech END - silence duration reached`);
+            const endTime = this.speechEndCandidateTime || timestamp;
+            this.endSpeech(endTime, probability);
+          }
+        } else if (probability > positiveThreshold) {
+          console.log('[VAD] Speech resumed before silence threshold reached');
+          this.state = 'speaking';
+          this.potentialSilenceDurationMs = 0;
+          this.speechEndCandidateTime = 0;
+        }
+        break;
+      }
+      default:
+        break;
     }
 
-    return this.state === 'speech';
+    return this.state === 'speaking' || this.state === 'potential_end';
+  }
+
+  /**
+   * Confirm speech start once minimum duration is satisfied
+   */
+  private confirmSpeechStart(timestamp: number, probability: number): void {
+    console.log(`[VAD] Speech START confirmed - probability ${probability.toFixed(3)}, timestamp: ${timestamp.toFixed(3)}s`);
+    this.state = 'speaking';
+    this.potentialSpeechDurationMs = 0;
+    this.potentialSilenceDurationMs = 0;
+    this.speechEndCandidateTime = 0;
+    this.speechStartBufferIndex = this.calculateSpeechStartBufferIndex();
+
+    const eventData: VADEventData = {
+      isSpeech: true,
+      probability,
+      timestamp
+    };
+
+    this.emit('speech-start', eventData);
+  }
+
+  /**
+   * Reset transient speech tracking back to silence
+   */
+  private resetToSilence(): void {
+    this.state = 'silence';
+    this.speechStartTime = 0;
+    this.speechEndCandidateTime = 0;
+    this.potentialSpeechDurationMs = 0;
+    this.potentialSilenceDurationMs = 0;
+    this.speechStartBufferIndex = 0;
+  }
+
+  /**
+   * Calculate buffer index to include pre-speech padding
+   */
+  private calculateSpeechStartBufferIndex(): number {
+    if (this.audioBuffer.length === 0) {
+      return 0;
+    }
+
+    const lastChunkLength = this.audioBuffer[this.audioBuffer.length - 1]?.length || this.frameSize;
+    const prePadSamples = (this.config.preSpeechPadDuration * 16000) / 1000;
+    const prePadFrames = Math.ceil(prePadSamples / Math.max(1, lastChunkLength));
+    return Math.max(0, this.audioBuffer.length - prePadFrames);
   }
 
   /**
@@ -333,11 +369,8 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
     };
     this.emit('speech-end', eventData);
 
-    // Reset state
-    this.state = 'non-speech';
-    this.consecutiveSilenceMs = 0;
-    this.positiveSpeechFrames = 0;
-    this.speechStartBufferIndex = 0;
+    // Reset state for next detection window
+    this.resetToSilence();
 
     // Clear old audio buffer to prevent memory buildup
     // Keep only frames needed for pre-padding of next segment
@@ -396,15 +429,10 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
    * Reset VAD state
    */
   reset(): void {
-    this.state = 'non-speech';
-    this.consecutiveSilenceMs = 0;
-    this.speechStartTime = 0;
-    this.speechStartBufferIndex = 0;
-    this.positiveSpeechFrames = 0;
+    this.resetToSilence();
     this.audioBuffer = [];
     this.sampleBuffer = new Float32Array(0);
     this.lastProbability = 0;
-    this.lastIsSpeech = false;
     this.lastTimestamp = 0;
     this.resetStates();
   }
@@ -414,11 +442,17 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
    * Should be called when audio stream ends to save the last segment
    */
   flush(timestamp?: number): void {
-    if (this.state === 'speech') {
+    if (this.state === 'speaking' || this.state === 'potential_end') {
       // Force end the current speech segment
-      // Use provided timestamp, or last processed timestamp, or estimate
-      const endTime = timestamp ?? this.lastTimestamp ?? (this.speechStartTime + 1000);
+      // Use provided timestamp, speech-end candidate, or last processed timestamp
+      const endTime = timestamp
+        ?? this.speechEndCandidateTime
+        ?? this.lastTimestamp
+        ?? (this.speechStartTime + 1000);
       this.endSpeech(endTime, this.lastProbability);
+    } else if (this.state === 'potential_start') {
+      // Discard partial speech that never reached minimum duration
+      this.resetToSilence();
     }
   }
 

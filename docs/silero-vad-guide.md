@@ -62,6 +62,17 @@ await sdk.start();
 | `preSpeechPadDuration` | `number` | `800` | Audio padding before speech start (ms) |
 | `minSpeechDuration` | `number` | `400` | Minimum duration to consider as speech (ms) |
 
+### State Machine
+
+Silero VAD now tracks speech using a four-phase state machine to reduce flicker:
+
+1. **`silence`** – default idle state, buffers only enough audio for pre-padding.
+2. **`potential_start`** – entered when probability rises above `positiveSpeechThreshold`. The detector waits until the buffered speech lasts longer than `minSpeechDuration`.
+3. **`speaking`** – confirmed speech. `speech-start` is emitted at this transition and all subsequent frames are treated as active speech.
+4. **`potential_end`** – triggered by probability dropping below `negativeSpeechThreshold`. Only after continuous silence exceeds `silenceDuration` does the state return to `silence` and emit `speech-end`. If speech resumes earlier, the state jumps back to `speaking`.
+
+This hysteresis ensures that short noises do not trigger speech events and brief pauses do not immediately end a segment.
+
 ### Event Listeners
 
 #### Unified Audio Event with VAD
