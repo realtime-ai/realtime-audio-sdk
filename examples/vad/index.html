@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Realtime Audio SDK - VAD Demo</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f7fa;
+      min-height: 100vh;
+    }
+    
+    .container {
+      display: flex;
+      min-height: 100vh;
+    }
+    
+    /* Left Panel - Controls */
+    .controls-panel {
+      width: 400px;
+      background: white;
+      padding: 24px;
+      border-right: 1px solid #e1e5eb;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    h1 {
+      font-size: 24px;
+      margin: 0 0 8px 0;
+      color: #1a1a2e;
+    }
+    
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    
+    .section {
+      margin-bottom: 24px;
+    }
+    
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 14px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+    }
+    
+    select:focus {
+      outline: none;
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+    
+    .controls-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background: #4f46e5;
+      color: white;
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      background: #4338ca;
+    }
+    
+    .btn-secondary {
+      background: #f1f5f9;
+      color: #475569;
+    }
+    
+    .btn-secondary:hover:not(:disabled) {
+      background: #e2e8f0;
+    }
+    
+    .btn-danger {
+      background: #ef4444;
+      color: white;
+    }
+    
+    .btn-danger:hover:not(:disabled) {
+      background: #dc2626;
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* Status Card */
+    .status-card {
+      background: #f8fafc;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+    }
+    
+    .status-row:not(:last-child) {
+      border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .status-label {
+      font-size: 13px;
+      color: #64748b;
+    }
+    
+    .status-value {
+      font-size: 14px;
+      font-weight: 500;
+      color: #1e293b;
+    }
+    
+    .status-value.recording {
+      color: #ef4444;
+    }
+    
+    .status-value.idle {
+      color: #10b981;
+    }
+    
+    /* Speech Indicator */
+    .speech-indicator {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    
+    .indicator-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.3);
+      transition: all 0.2s;
+    }
+    
+    .indicator-dot.active {
+      background: #10b981;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);
+      animation: pulse 1s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+    }
+    
+    .speech-text {
+      color: white;
+      font-weight: 500;
+    }
+    
+    .probability-bar {
+      flex: 1;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    .probability-fill {
+      height: 100%;
+      background: white;
+      border-radius: 4px;
+      transition: width 0.1s;
+      width: 0%;
+    }
+    
+    /* VAD Config */
+    .config-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+    }
+    
+    .config-row label {
+      font-size: 14px;
+      color: #374151;
+    }
+    
+    .config-row input[type="range"] {
+      width: 120px;
+    }
+    
+    .config-value {
+      font-size: 13px;
+      color: #6b7280;
+      min-width: 40px;
+      text-align: right;
+    }
+    
+    /* Right Panel - Segments */
+    .segments-panel {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+    }
+    
+    .segments-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    
+    .segments-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #1a1a2e;
+    }
+    
+    .segments-count {
+      background: #e0e7ff;
+      color: #4f46e5;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    
+    .segments-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .segment-card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      animation: slideIn 0.3s ease-out;
+    }
+    
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .segment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    
+    .segment-number {
+      font-weight: 600;
+      color: #4f46e5;
+      font-size: 14px;
+    }
+    
+    .segment-time {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    
+    .segment-meta {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+    
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #6b7280;
+    }
+    
+    .meta-icon {
+      font-size: 14px;
+    }
+    
+    .segment-waveform {
+      height: 60px;
+      background: #f8fafc;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .waveform-canvas {
+      width: 100%;
+      height: 100%;
+    }
+    
+    .segment-controls {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .play-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: #4f46e5;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .play-btn:hover {
+      background: #4338ca;
+    }
+    
+    .play-btn.playing {
+      background: #ef4444;
+    }
+    
+    .play-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+    
+    .download-btn {
+      padding: 8px 12px;
+      background: #f1f5f9;
+      color: #475569;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .download-btn:hover {
+      background: #e2e8f0;
+    }
+    
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #9ca3af;
+    }
+    
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    
+    .empty-title {
+      font-size: 18px;
+      font-weight: 500;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+    
+    .empty-text {
+      font-size: 14px;
+    }
+    
+    /* Confidence Badge */
+    .confidence-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+    
+    .confidence-badge.high {
+      background: #dcfce7;
+      color: #166534;
+    }
+    
+    .confidence-badge.medium {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    
+    .confidence-badge.low {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Left Panel - Controls -->
+    <div class="controls-panel">
+      <h1>🎙️ VAD Demo</h1>
+      <p class="subtitle">Voice Activity Detection with real-time segment capture</p>
+      
+      <div class="section">
+        <div class="section-title">Audio Device</div>
+        <select id="deviceSelect">
+          <option value="">Default Device</option>
+        </select>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">Controls</div>
+        <div class="controls-row">
+          <button id="startBtn" class="btn-primary">▶ Start</button>
+          <button id="stopBtn" class="btn-secondary" disabled>⏹ Stop</button>
+        </div>
+        <button id="clearBtn" class="btn-danger" style="width: 100%;">🗑 Clear Segments</button>
+      </div>
+      
+      <div class="speech-indicator">
+        <div class="indicator-dot" id="speechDot"></div>
+        <div class="speech-text" id="speechText">Waiting...</div>
+        <div class="probability-bar">
+          <div class="probability-fill" id="probabilityFill"></div>
+        </div>
+      </div>
+      
+      <div class="status-card">
+        <div class="status-row">
+          <span class="status-label">Status</span>
+          <span class="status-value" id="status">Idle</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Sample Rate</span>
+          <span class="status-value">16 kHz</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Frame Size</span>
+          <span class="status-value">20ms</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">VAD Model</span>
+          <span class="status-value">Silero v5</span>
+        </div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">VAD Settings</div>
+        <div class="config-row">
+          <label>Speech Threshold</label>
+          <input type="range" id="speechThreshold" min="0.1" max="0.9" step="0.05" value="0.6">
+          <span class="config-value" id="speechThresholdValue">0.6</span>
+        </div>
+        <div class="config-row">
+          <label>Silence Duration</label>
+          <input type="range" id="silenceDuration" min="200" max="2000" step="100" value="800">
+          <span class="config-value" id="silenceDurationValue">800ms</span>
+        </div>
+        <div class="config-row">
+          <label>Min Speech Duration</label>
+          <input type="range" id="minSpeechDuration" min="50" max="500" step="50" value="100">
+          <span class="config-value" id="minSpeechDurationValue">100ms</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Right Panel - Segments -->
+    <div class="segments-panel">
+      <div class="segments-header">
+        <span class="segments-title">Speech Segments</span>
+        <span class="segments-count" id="segmentsCount">0 segments</span>
+      </div>
+      
+      <div class="segments-list" id="segmentsList">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">🎤</div>
+          <div class="empty-title">No segments yet</div>
+          <div class="empty-text">Start recording and speak to capture speech segments</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { RealtimeAudioSDK } from '../../src/index.ts';
+
+    let sdk = null;
+    let segments = [];
+    let segmentCounter = 0;
+    let audioContext = null;
+    let currentPlayingSource = null;
+    let currentPlayingId = null;
+
+    // DOM elements
+    const deviceSelect = document.getElementById('deviceSelect');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const statusEl = document.getElementById('status');
+    const speechDot = document.getElementById('speechDot');
+    const speechText = document.getElementById('speechText');
+    const probabilityFill = document.getElementById('probabilityFill');
+    const segmentsList = document.getElementById('segmentsList');
+    const segmentsCount = document.getElementById('segmentsCount');
+    const emptyState = document.getElementById('emptyState');
+    
+    // Config sliders
+    const speechThreshold = document.getElementById('speechThreshold');
+    const silenceDuration = document.getElementById('silenceDuration');
+    const minSpeechDuration = document.getElementById('minSpeechDuration');
+    const speechThresholdValue = document.getElementById('speechThresholdValue');
+    const silenceDurationValue = document.getElementById('silenceDurationValue');
+    const minSpeechDurationValue = document.getElementById('minSpeechDurationValue');
+
+    // Update config values display
+    speechThreshold.addEventListener('input', () => {
+      speechThresholdValue.textContent = speechThreshold.value;
+    });
+    silenceDuration.addEventListener('input', () => {
+      silenceDurationValue.textContent = silenceDuration.value + 'ms';
+    });
+    minSpeechDuration.addEventListener('input', () => {
+      minSpeechDurationValue.textContent = minSpeechDuration.value + 'ms';
+    });
+
+    // Get VAD config from UI
+    function getVADConfig() {
+      return {
+        enabled: true,
+        positiveSpeechThreshold: parseFloat(speechThreshold.value),
+        negativeSpeechThreshold: parseFloat(speechThreshold.value) - 0.15,
+        silenceDuration: parseInt(silenceDuration.value),
+        preSpeechPadDuration: 300,
+        minSpeechDuration: parseInt(minSpeechDuration.value),
+        modelPath: '/public/models/silero_vad_v5.onnx',
+      };
+    }
+
+    // Initialize SDK
+    function initSDK() {
+      sdk = new RealtimeAudioSDK({
+        frameSize: 20,
+        sampleRate: 16000,
+        channelCount: 1,
+        encoding: {
+          enabled: false, // We don't need encoding for this demo
+        },
+        processing: {
+          vad: getVADConfig(),
+        },
+      });
+
+      setupEventListeners();
+    }
+
+    // Setup event listeners
+    function setupEventListeners() {
+      // VAD result for real-time probability display
+      sdk.on('vad-result', (event) => {
+        const probability = event.probability;
+        probabilityFill.style.width = (probability * 100) + '%';
+        
+        if (event.isSpeech) {
+          speechDot.classList.add('active');
+          speechText.textContent = 'Speaking...';
+        } else {
+          speechDot.classList.remove('active');
+          speechText.textContent = 'Listening...';
+        }
+      });
+
+      // Speech segment event - main event for capturing segments
+      sdk.on('speech-segment', (event) => {
+        console.log('Speech segment received:', event);
+        addSegment(event);
+      });
+
+      // Speech state changes
+      sdk.on('speech-state', (event) => {
+        if (event.type === 'start') {
+          console.log('Speech started');
+        } else {
+          console.log('Speech ended, duration:', event.duration + 'ms');
+        }
+      });
+
+      // State changes
+      sdk.on('state', (state) => {
+        statusEl.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+        statusEl.className = 'status-value ' + state;
+        
+        if (state === 'recording') {
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+          speechText.textContent = 'Listening...';
+        } else {
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          speechDot.classList.remove('active');
+          speechText.textContent = 'Waiting...';
+          probabilityFill.style.width = '0%';
+        }
+      });
+
+      // Error handling
+      sdk.on('error', (error) => {
+        console.error('SDK Error:', error);
+        alert('Error: ' + error.message);
+      });
+    }
+
+    // Add a segment to the list
+    function addSegment(event) {
+      segmentCounter++;
+      const segment = {
+        id: segmentCounter,
+        audio: event.audio,
+        duration: event.duration,
+        confidence: event.confidence,
+        avgProbability: event.avgProbability,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        timestamp: new Date(),
+      };
+      
+      segments.unshift(segment);
+      renderSegments();
+    }
+
+    // Get confidence level
+    function getConfidenceLevel(confidence) {
+      if (confidence > 0.8) return 'high';
+      if (confidence > 0.5) return 'medium';
+      return 'low';
+    }
+
+    // Format time
+    function formatTime(date) {
+      return date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+      });
+    }
+
+    // Draw waveform on canvas
+    function drawWaveform(canvas, audioData) {
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, width, height);
+      
+      ctx.strokeStyle = '#4f46e5';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      
+      const step = Math.ceil(audioData.length / width);
+      const amp = height / 2;
+      
+      for (let i = 0; i < width; i++) {
+        let min = 1.0;
+        let max = -1.0;
+        
+        for (let j = 0; j < step; j++) {
+          const idx = i * step + j;
+          if (idx < audioData.length) {
+            const val = audioData[idx];
+            if (val < min) min = val;
+            if (val > max) max = val;
+          }
+        }
+        
+        ctx.moveTo(i, (1 + min) * amp);
+        ctx.lineTo(i, (1 + max) * amp);
+      }
+      
+      ctx.stroke();
+    }
+
+    // Play audio segment
+    function playSegment(segmentId) {
+      const segment = segments.find(s => s.id === segmentId);
+      if (!segment) return;
+
+      // Stop current playback if any
+      if (currentPlayingSource) {
+        currentPlayingSource.stop();
+        currentPlayingSource = null;
+        
+        // Reset previous button
+        const prevBtn = document.querySelector(`[data-segment-id="${currentPlayingId}"]`);
+        if (prevBtn) {
+          prevBtn.classList.remove('playing');
+          prevBtn.innerHTML = '▶ Play';
+        }
+      }
+
+      // If clicking the same segment that was playing, just stop
+      if (currentPlayingId === segmentId) {
+        currentPlayingId = null;
+        return;
+      }
+
+      // Create audio context if needed
+      if (!audioContext) {
+        audioContext = new AudioContext({ sampleRate: 16000 });
+      }
+
+      // Resume audio context if suspended
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+
+      // Create audio buffer
+      const audioBuffer = audioContext.createBuffer(1, segment.audio.length, 16000);
+      const channelData = audioBuffer.getChannelData(0);
+      channelData.set(segment.audio);
+
+      // Create source and play
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+      
+      currentPlayingSource = source;
+      currentPlayingId = segmentId;
+
+      // Update button state
+      const btn = document.querySelector(`[data-segment-id="${segmentId}"]`);
+      if (btn) {
+        btn.classList.add('playing');
+        btn.innerHTML = '⏹ Stop';
+      }
+
+      source.onended = () => {
+        currentPlayingSource = null;
+        currentPlayingId = null;
+        if (btn) {
+          btn.classList.remove('playing');
+          btn.innerHTML = '▶ Play';
+        }
+      };
+
+      source.start();
+    }
+
+    // Download segment as WAV
+    function downloadSegment(segmentId) {
+      const segment = segments.find(s => s.id === segmentId);
+      if (!segment) return;
+
+      const audioData = segment.audio;
+      const sampleRate = 16000;
+      
+      // Create WAV file
+      const wavBuffer = createWavBuffer(audioData, sampleRate);
+      const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `segment_${segment.id}_${segment.duration}ms.wav`;
+      a.click();
+      
+      URL.revokeObjectURL(url);
+    }
+
+    // Create WAV buffer from Float32Array
+    function createWavBuffer(audioData, sampleRate) {
+      const numChannels = 1;
+      const bitsPerSample = 16;
+      const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+      const blockAlign = numChannels * (bitsPerSample / 8);
+      const dataSize = audioData.length * (bitsPerSample / 8);
+      const fileSize = 44 + dataSize;
+      
+      const buffer = new ArrayBuffer(fileSize);
+      const view = new DataView(buffer);
+      
+      // RIFF header
+      writeString(view, 0, 'RIFF');
+      view.setUint32(4, fileSize - 8, true);
+      writeString(view, 8, 'WAVE');
+      
+      // fmt chunk
+      writeString(view, 12, 'fmt ');
+      view.setUint32(16, 16, true); // chunk size
+      view.setUint16(20, 1, true); // audio format (PCM)
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, byteRate, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, bitsPerSample, true);
+      
+      // data chunk
+      writeString(view, 36, 'data');
+      view.setUint32(40, dataSize, true);
+      
+      // Write audio data
+      let offset = 44;
+      for (let i = 0; i < audioData.length; i++) {
+        const sample = Math.max(-1, Math.min(1, audioData[i]));
+        const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+        view.setInt16(offset, int16, true);
+        offset += 2;
+      }
+      
+      return buffer;
+    }
+
+    function writeString(view, offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+
+    // Render segments list
+    function renderSegments() {
+      if (segments.length === 0) {
+        segmentsList.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">🎤</div>
+            <div class="empty-title">No segments yet</div>
+            <div class="empty-text">Start recording and speak to capture speech segments</div>
+          </div>
+        `;
+        segmentsCount.textContent = '0 segments';
+        return;
+      }
+
+      segmentsCount.textContent = segments.length + ' segment' + (segments.length === 1 ? '' : 's');
+      
+      segmentsList.innerHTML = segments.map(segment => {
+        const confidenceLevel = getConfidenceLevel(segment.confidence);
+        const samples = segment.audio.length;
+        const durationSec = (segment.duration / 1000).toFixed(2);
+        
+        return `
+          <div class="segment-card" id="segment-${segment.id}">
+            <div class="segment-header">
+              <span class="segment-number">Segment #${segment.id}</span>
+              <span class="segment-time">${formatTime(segment.timestamp)}</span>
+            </div>
+            <div class="segment-meta">
+              <div class="meta-item">
+                <span class="meta-icon">⏱</span>
+                <span>${durationSec}s</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-icon">📊</span>
+                <span>${samples.toLocaleString()} samples</span>
+              </div>
+              <div class="meta-item">
+                <span class="confidence-badge ${confidenceLevel}">${confidenceLevel}</span>
+              </div>
+            </div>
+            <div class="segment-waveform">
+              <canvas class="waveform-canvas" id="waveform-${segment.id}" width="600" height="60"></canvas>
+            </div>
+            <div class="segment-controls">
+              <button class="play-btn" data-segment-id="${segment.id}" onclick="window.playSegment(${segment.id})">
+                ▶ Play
+              </button>
+              <button class="download-btn" onclick="window.downloadSegment(${segment.id})">
+                ⬇ Download WAV
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Draw waveforms
+      segments.forEach(segment => {
+        const canvas = document.getElementById(`waveform-${segment.id}`);
+        if (canvas) {
+          drawWaveform(canvas, segment.audio);
+        }
+      });
+    }
+
+    // Expose play/download functions to global scope
+    window.playSegment = playSegment;
+    window.downloadSegment = downloadSegment;
+
+    // Load devices
+    async function loadDevices() {
+      if (!sdk) initSDK();
+
+      try {
+        const devices = await sdk.getDevices();
+        deviceSelect.innerHTML = '<option value="">Default Device</option>';
+
+        devices.forEach(device => {
+          const option = document.createElement('option');
+          option.value = device.deviceId;
+          option.textContent = device.label || `Device ${device.deviceId.slice(0, 8)}`;
+          deviceSelect.appendChild(option);
+        });
+      } catch (error) {
+        console.error('Failed to load devices:', error);
+      }
+    }
+
+    // Start recording
+    startBtn.addEventListener('click', async () => {
+      try {
+        // Recreate SDK with current config
+        if (sdk) {
+          await sdk.destroy();
+        }
+        initSDK();
+
+        if (deviceSelect.value) {
+          await sdk.setDevice(deviceSelect.value);
+        }
+
+        await sdk.start();
+      } catch (error) {
+        console.error('Failed to start:', error);
+        alert('Failed to start: ' + error.message);
+      }
+    });
+
+    // Stop recording
+    stopBtn.addEventListener('click', async () => {
+      try {
+        await sdk.stop();
+      } catch (error) {
+        console.error('Failed to stop:', error);
+      }
+    });
+
+    // Clear segments
+    clearBtn.addEventListener('click', () => {
+      segments = [];
+      segmentCounter = 0;
+      renderSegments();
+    });
+
+    // Initialize
+    loadDevices();
+    renderSegments();
+  </script>
+</body>
+</html>
