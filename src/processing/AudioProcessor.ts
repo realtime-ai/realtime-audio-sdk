@@ -132,8 +132,8 @@ export class AudioProcessor extends EventEmitter<AudioProcessorEvents> {
 
     // Voice Activity Detection (asynchronous, non-blocking)
     if (this.config.vad?.enabled && this.sileroVAD) {
-      // Use async queue-based processing - results will be emitted via 'vad-result' event
-      this.sileroVAD.enqueue(processedData, timestamp);
+      // Queue for async processing - results will be emitted via 'vad-result' event
+      this.sileroVAD.process(processedData, timestamp);
     } else if (this.config.vad?.enabled && !this.sileroVAD) {
       console.warn('VAD enabled but SileroVAD not initialized. Call initialize() first.');
     }
@@ -145,45 +145,6 @@ export class AudioProcessor extends EventEmitter<AudioProcessorEvents> {
       energy,
       normalized: this.config.normalize || false,
       vad: undefined, // VAD is async, results come via event
-      timestamp,
-    };
-  }
-
-  /**
-   * Process audio data synchronously (blocking).
-   * @deprecated Use process() for non-blocking async VAD processing.
-   * This method is kept for backward compatibility but will block until VAD processing completes.
-   */
-  async processSync(audioData: Float32Array, timestamp: number): Promise<AudioProcessorResult> {
-    let processedData = audioData;
-
-    // Normalize audio if enabled
-    if (this.config.normalize) {
-      processedData = this.normalize(processedData);
-    }
-
-    // Calculate energy
-    const energy = this.calculateEnergy(processedData);
-
-    // Voice Activity Detection (synchronous)
-    let vadResult: { isSpeech: boolean; probability: number } | undefined;
-
-    if (this.config.vad?.enabled && this.sileroVAD) {
-      // Use legacy synchronous process method
-      const result = await this.sileroVAD.process(processedData, timestamp);
-      vadResult = {
-        isSpeech: result.isSpeech,
-        probability: result.probability
-      };
-    } else if (this.config.vad?.enabled && !this.sileroVAD) {
-      console.warn('VAD enabled but SileroVAD not initialized. Call initialize() first.');
-    }
-
-    return {
-      data: processedData,
-      energy,
-      normalized: this.config.normalize || false,
-      vad: vadResult,
       timestamp,
     };
   }
