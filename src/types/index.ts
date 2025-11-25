@@ -181,6 +181,18 @@ export interface VADSegmentEvent {
 }
 
 /**
+ * VAD result event - emitted for each processed audio frame
+ */
+export interface VADResultEvent {
+  /** Is speech detected */
+  isSpeech: boolean;
+  /** Speech probability (0-1) */
+  probability: number;
+  /** Timestamp in seconds */
+  timestamp: number;
+}
+
+/**
  * Device event
  */
 export interface DeviceEvent {
@@ -227,6 +239,9 @@ export interface SDKEvents {
   /** VAD state change events */
   'speech-state': (event: VADStateEvent) => void;
   'speech-segment': (event: VADSegmentEvent) => void;
+
+  /** VAD result event - fired asynchronously for each processed audio frame */
+  'vad-result': (event: VADResultEvent) => void;
 
   /** Device events */
   'device': (event: DeviceEvent) => void;

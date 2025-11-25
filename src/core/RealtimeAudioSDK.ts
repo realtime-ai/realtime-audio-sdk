@@ -13,6 +13,7 @@ import type {
   DeviceEvent,
   SDKError,
 } from '@/types';
+import type { VADResultEvent } from '@/vad/SileroVAD';
 
 /**
  * Main RealtimeAudioSDK class
@@ -25,6 +26,9 @@ export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
   private audioProcessor: AudioProcessor;
   private encoder: OpusEncoder | PCMEncoder | null = null;
   private frameCounter: number = 0;
+
+  // Cache for the latest VAD result (updated asynchronously)
+  private latestVADResult: VADResultEvent | null = null;
 
   constructor(config: SDKConfig = {}) {
     super();
@@ -110,17 +114,26 @@ export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
     this.audioProcessor.on('speech-segment', (event) => {
       this.emit('speech-segment', event);
     });
+
+    // Cache VAD results from async processing
+    this.audioProcessor.on('vad-result', (event) => {
+      this.latestVADResult = event;
+      // Also emit vad-result event for real-time VAD updates
+      this.emit('vad-result', event);
+    });
   }
 
   /**
    * Handle incoming audio frame
+   * Note: VAD is processed asynchronously, so VAD results in the audio event
+   * may be from a previous frame. For real-time VAD updates, listen to 'vad-result' event.
    */
   private async handleAudioFrame(
     rawData: Float32Array,
     timestamp: number
   ): Promise<void> {
-    // Process audio
-    const processed = await this.audioProcessor.process(rawData, timestamp);
+    // Process audio (non-blocking, VAD is queued for async processing)
+    const processed = this.audioProcessor.process(rawData, timestamp);
 
     // Encode if enabled
     let encoded: ArrayBuffer | undefined;
@@ -132,6 +145,7 @@ export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
     }
 
     // Build unified audio event
+    // Note: VAD result is from the cached async result, may not correspond to this exact frame
     const audioEvent: AudioDataEvent = {
       audio: {
         raw: processed.data,
@@ -148,11 +162,12 @@ export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
       processing: {
         energy: processed.energy,
         normalized: processed.normalized,
-        vad: processed.vad ? {
+        // Use cached VAD result from async processing
+        vad: this.latestVADResult ? {
           active: true,
-          isSpeech: processed.vad.isSpeech,
-          probability: processed.vad.probability,
-          confidence: this.getConfidenceLevel(processed.vad.probability)
+          isSpeech: this.latestVADResult.isSpeech,
+          probability: this.latestVADResult.probability,
+          confidence: this.getConfidenceLevel(this.latestVADResult.probability)
         } : undefined
       }
     };
@@ -267,16 +282,20 @@ export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
     }
 
     try {
-      // Flush any pending VAD speech segment
-      this.audioProcessor.flush();
-
+      // Stop capturing first
       await this.audioCapture.stop();
+
+      // Wait for VAD queue to be empty, then flush any pending speech segment
+      await this.audioProcessor.flushAsync();
 
       if (this.encoder) {
         await this.encoder.flush();
         this.encoder.close();
         this.encoder = null;
       }
+
+      // Clear cached VAD result
+      this.latestVADResult = null;
 
       this.setState('idle');
       console.log('Audio capture stopped');
@@ -335,12 +354,36 @@ export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
   }
 
   /**
-   * Flush any pending speech segment
-   * Useful when you want to force save the current speech segment
+   * Flush any pending speech segment (synchronous).
+   * Note: This does not wait for the VAD processing queue to empty.
+   * Use flushAsync() to wait for all pending audio frames to be processed first.
    * @param timestamp Optional timestamp to use as end time
    */
   flush(timestamp?: number): void {
     this.audioProcessor.flush(timestamp);
+  }
+
+  /**
+   * Flush any pending speech segment asynchronously.
+   * Waits for the VAD processing queue to be empty before flushing.
+   * @param timestamp Optional timestamp to use as end time
+   */
+  async flushAsync(timestamp?: number): Promise<void> {
+    await this.audioProcessor.flushAsync(timestamp);
+  }
+
+  /**
+   * Wait for the VAD processing queue to be empty
+   */
+  async waitForVADQueue(): Promise<void> {
+    await this.audioProcessor.waitForVADQueue();
+  }
+
+  /**
+   * Get the VAD processing queue length
+   */
+  getVADQueueLength(): number {
+    return this.audioProcessor.getVADQueueLength();
   }
 
   /**
