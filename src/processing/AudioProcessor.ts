@@ -5,11 +5,12 @@ import type {
   VADSegmentEvent
 } from '../types';
 import { EventEmitter } from '../core/EventEmitter';
-import { SileroVAD } from '../vad/SileroVAD';
+import { SileroVAD, VADResultEvent } from '../vad/SileroVAD';
 
 interface AudioProcessorEvents {
   'speech-state': (event: VADStateEvent) => void;
   'speech-segment': (event: VADSegmentEvent) => void;
+  'vad-result': (event: VADResultEvent) => void;
 }
 
 /**
@@ -44,6 +45,11 @@ export class AudioProcessor extends EventEmitter<AudioProcessorEvents> {
 
       this.sileroVAD.on('speech-end', (data) => {
         this.emitVADEvent('end', data);
+      });
+
+      // Forward vad-result event for async processing mode
+      this.sileroVAD.on('vad-result', (data) => {
+        this.emit('vad-result', data);
       });
     } else {
       console.log('VAD not enabled or config missing');
@@ -107,9 +113,13 @@ export class AudioProcessor extends EventEmitter<AudioProcessorEvents> {
   }
 
   /**
-   * Process audio data
+   * Process audio data (non-blocking).
+   * VAD is processed asynchronously and results are emitted via 'vad-result' event.
+   *
+   * Note: The returned result does NOT include VAD data since VAD is processed asynchronously.
+   * Listen to the 'vad-result' event to get VAD results.
    */
-  async process(audioData: Float32Array, timestamp: number): Promise<AudioProcessorResult> {
+  process(audioData: Float32Array, timestamp: number): AudioProcessorResult {
     let processedData = audioData;
 
     // Normalize audio if enabled
@@ -120,11 +130,46 @@ export class AudioProcessor extends EventEmitter<AudioProcessorEvents> {
     // Calculate energy
     const energy = this.calculateEnergy(processedData);
 
-    // Voice Activity Detection
+    // Voice Activity Detection (asynchronous, non-blocking)
+    if (this.config.vad?.enabled && this.sileroVAD) {
+      // Use async queue-based processing - results will be emitted via 'vad-result' event
+      this.sileroVAD.enqueue(processedData, timestamp);
+    } else if (this.config.vad?.enabled && !this.sileroVAD) {
+      console.warn('VAD enabled but SileroVAD not initialized. Call initialize() first.');
+    }
+
+    // Note: VAD result is not included here since it's processed asynchronously
+    // Listen to 'vad-result' event for VAD results
+    return {
+      data: processedData,
+      energy,
+      normalized: this.config.normalize || false,
+      vad: undefined, // VAD is async, results come via event
+      timestamp,
+    };
+  }
+
+  /**
+   * Process audio data synchronously (blocking).
+   * @deprecated Use process() for non-blocking async VAD processing.
+   * This method is kept for backward compatibility but will block until VAD processing completes.
+   */
+  async processSync(audioData: Float32Array, timestamp: number): Promise<AudioProcessorResult> {
+    let processedData = audioData;
+
+    // Normalize audio if enabled
+    if (this.config.normalize) {
+      processedData = this.normalize(processedData);
+    }
+
+    // Calculate energy
+    const energy = this.calculateEnergy(processedData);
+
+    // Voice Activity Detection (synchronous)
     let vadResult: { isSpeech: boolean; probability: number } | undefined;
 
     if (this.config.vad?.enabled && this.sileroVAD) {
-      // Use Silero VAD (only VAD option now)
+      // Use legacy synchronous process method
       const result = await this.sileroVAD.process(processedData, timestamp);
       vadResult = {
         isSpeech: result.isSpeech,
@@ -191,13 +236,41 @@ export class AudioProcessor extends EventEmitter<AudioProcessorEvents> {
   }
 
   /**
-   * Flush any pending speech segment
-   * Useful when audio stream ends to save the last incomplete segment
+   * Flush any pending speech segment (synchronous).
+   * Useful when audio stream ends to save the last incomplete segment.
+   * Note: This does not wait for the processing queue to empty.
+   * Use flushAsync() to wait for all pending audio frames to be processed first.
    */
   flush(timestamp?: number): void {
     if (this.sileroVAD) {
       this.sileroVAD.flush(timestamp);
     }
+  }
+
+  /**
+   * Flush any pending speech segment asynchronously.
+   * Waits for the processing queue to be empty before flushing.
+   */
+  async flushAsync(timestamp?: number): Promise<void> {
+    if (this.sileroVAD) {
+      await this.sileroVAD.flushAsync(timestamp);
+    }
+  }
+
+  /**
+   * Wait for the VAD processing queue to be empty
+   */
+  async waitForVADQueue(): Promise<void> {
+    if (this.sileroVAD) {
+      await this.sileroVAD.waitForQueueEmpty();
+    }
+  }
+
+  /**
+   * Get the VAD processing queue length
+   */
+  getVADQueueLength(): number {
+    return this.sileroVAD?.getQueueLength() ?? 0;
   }
 
   /**

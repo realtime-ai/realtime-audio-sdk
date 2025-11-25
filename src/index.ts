@@ -21,8 +21,13 @@ export type {
   DeviceEvent,
   VADStateEvent,
   VADSegmentEvent,
+  VADResultEvent,
   SDKError,
   FrameSize,
   AudioCodec,
   OpusEncoderConfig,
 } from '@/types';
+
+// Export SileroVAD for advanced usage
+export { SileroVAD } from '@/vad/SileroVAD';
+export type { VADResultEvent as SileroVADResultEvent } from '@/vad/SileroVAD';

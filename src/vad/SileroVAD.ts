@@ -14,12 +14,30 @@ interface VADEventData {
   };
 }
 
+/**
+ * VAD result event data - emitted asynchronously after processing each audio frame
+ */
+export interface VADResultEvent {
+  isSpeech: boolean;
+  probability: number;
+  timestamp: number;
+}
+
 interface SileroVADEvents {
   'speech-start': (data: VADEventData) => void;
   'speech-end': (data: VADEventData) => void;
+  'vad-result': (data: VADResultEvent) => void;
 }
 
 type VADState = 'silence' | 'potential_start' | 'speaking' | 'potential_end';
+
+/**
+ * Audio frame item in the processing queue
+ */
+interface QueueItem {
+  audioData: Float32Array;
+  timestamp: number;
+}
 
 /**
  * Silero VAD implementation using ONNX Runtime
@@ -46,6 +64,11 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
   private sampleBuffer: Float32Array = new Float32Array(0);
   private lastProbability: number = 0;
   private lastTimestamp: number = 0; // Track last processed timestamp
+
+  // Async processing queue
+  private processingQueue: QueueItem[] = [];
+  private isProcessing: boolean = false;
+  private isClosing: boolean = false;
 
   constructor(config: SileroVADConfig) {
     super();
@@ -121,9 +144,77 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
   }
 
   /**
-   * Process audio data and return VAD results
+   * Process audio data asynchronously (non-blocking).
+   * Audio frames are queued and processed in order.
+   * Results are emitted via 'vad-result' event.
+   *
+   * @param audioData - Audio samples (Float32Array)
+   * @param timestamp - Timestamp in seconds
+   */
+  enqueue(audioData: Float32Array, timestamp: number): void {
+    if (this.isClosing) {
+      return;
+    }
+
+    // Add to the processing queue
+    this.processingQueue.push({
+      audioData: new Float32Array(audioData), // Copy to avoid mutation
+      timestamp
+    });
+
+    // Start processing if not already running
+    this.processQueue();
+  }
+
+  /**
+   * Legacy synchronous process method.
+   * @deprecated Use enqueue() for non-blocking async processing.
+   * This method is kept for backward compatibility but will block until processing completes.
    */
   async process(audioData: Float32Array, timestamp: number): Promise<{
+    isSpeech: boolean;
+    probability: number;
+  }> {
+    return this.processAudioFrame(audioData, timestamp);
+  }
+
+  /**
+   * Process the queue asynchronously
+   */
+  private async processQueue(): Promise<void> {
+    if (this.isProcessing || this.processingQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessing = true;
+
+    try {
+      while (this.processingQueue.length > 0 && !this.isClosing) {
+        const item = this.processingQueue.shift()!;
+        const result = await this.processAudioFrame(item.audioData, item.timestamp);
+
+        // Emit result event asynchronously
+        this.emit('vad-result', {
+          isSpeech: result.isSpeech,
+          probability: result.probability,
+          timestamp: item.timestamp
+        });
+      }
+    } finally {
+      this.isProcessing = false;
+
+      // Check if new items were added while processing
+      if (this.processingQueue.length > 0 && !this.isClosing) {
+        // Use queueMicrotask to avoid stack overflow with many items
+        queueMicrotask(() => this.processQueue());
+      }
+    }
+  }
+
+  /**
+   * Internal method to process a single audio frame
+   */
+  private async processAudioFrame(audioData: Float32Array, timestamp: number): Promise<{
     isSpeech: boolean;
     probability: number;
   }> {
@@ -434,14 +525,39 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
     this.sampleBuffer = new Float32Array(0);
     this.lastProbability = 0;
     this.lastTimestamp = 0;
+    this.processingQueue = [];
     this.resetStates();
+  }
+
+  /**
+   * Wait for the processing queue to be empty
+   * @returns Promise that resolves when the queue is empty
+   */
+  async waitForQueueEmpty(): Promise<void> {
+    while (this.processingQueue.length > 0 || this.isProcessing) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
+
+  /**
+   * Get the current queue length
+   */
+  getQueueLength(): number {
+    return this.processingQueue.length;
   }
 
   /**
    * Flush any pending speech segment
    * Should be called when audio stream ends to save the last segment
+   * @param timestamp Optional timestamp to use as end time
+   * @param waitForQueue If true, wait for the processing queue to be empty before flushing
    */
-  flush(timestamp?: number): void {
+  flush(timestamp?: number, waitForQueue?: boolean): void {
+    if (waitForQueue) {
+      // Note: This is synchronous, caller should await waitForQueueEmpty() first if needed
+      console.warn('waitForQueue=true in flush() is deprecated. Use flushAsync() instead.');
+    }
+
     if (this.state === 'speaking' || this.state === 'potential_end') {
       // Force end the current speech segment
       // Use provided timestamp, speech-end candidate, or last processed timestamp
@@ -457,9 +573,29 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
   }
 
   /**
+   * Async version of flush that waits for queue to empty first
+   * @param timestamp Optional timestamp to use as end time
+   */
+  async flushAsync(timestamp?: number): Promise<void> {
+    await this.waitForQueueEmpty();
+    this.flush(timestamp);
+  }
+
+  /**
    * Close and cleanup
    */
   async close(): Promise<void> {
+    // Mark as closing to stop queue processing
+    this.isClosing = true;
+
+    // Clear the processing queue
+    this.processingQueue = [];
+
+    // Wait for any ongoing processing to complete
+    while (this.isProcessing) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
     // Flush any pending speech segment before closing
     this.flush();
 
