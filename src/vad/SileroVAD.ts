@@ -151,7 +151,7 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
    * @param audioData - Audio samples (Float32Array)
    * @param timestamp - Timestamp in seconds
    */
-  enqueue(audioData: Float32Array, timestamp: number): void {
+  process(audioData: Float32Array, timestamp: number): void {
     if (this.isClosing) {
       return;
     }
@@ -164,18 +164,6 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
 
     // Start processing if not already running
     this.processQueue();
-  }
-
-  /**
-   * Legacy synchronous process method.
-   * @deprecated Use enqueue() for non-blocking async processing.
-   * This method is kept for backward compatibility but will block until processing completes.
-   */
-  async process(audioData: Float32Array, timestamp: number): Promise<{
-    isSpeech: boolean;
-    probability: number;
-  }> {
-    return this.processAudioFrame(audioData, timestamp);
   }
 
   /**
@@ -547,17 +535,13 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
   }
 
   /**
-   * Flush any pending speech segment
-   * Should be called when audio stream ends to save the last segment
+   * Flush any pending speech segment (synchronous).
+   * Should be called when audio stream ends to save the last segment.
+   * Note: This does not wait for the processing queue to empty.
+   * Use flushAsync() to wait for all pending audio frames to be processed first.
    * @param timestamp Optional timestamp to use as end time
-   * @param waitForQueue If true, wait for the processing queue to be empty before flushing
    */
-  flush(timestamp?: number, waitForQueue?: boolean): void {
-    if (waitForQueue) {
-      // Note: This is synchronous, caller should await waitForQueueEmpty() first if needed
-      console.warn('waitForQueue=true in flush() is deprecated. Use flushAsync() instead.');
-    }
-
+  flush(timestamp?: number): void {
     if (this.state === 'speaking' || this.state === 'potential_end') {
       // Force end the current speech segment
       // Use provided timestamp, speech-end candidate, or last processed timestamp
