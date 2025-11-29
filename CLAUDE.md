@@ -33,7 +33,7 @@ npm run test:coverage
 src/
 ├── core/
 │   ├── EventEmitter.ts       # Event system base class
-│   └── RealtimeAudioSDK.ts   # Main SDK entry point
+│   └── RTA.ts   # Main SDK entry point
 ├── capture/
 │   ├── AudioCapture.ts            # Audio capture with AudioWorklet
 │   └── audio-worklet-processor.ts # Worklet processor (runs in audio thread)
@@ -78,7 +78,7 @@ src/
    - PCMEncoder: Fallback for browsers without WebCodecs
    - Converts Float32 to Int16 PCM or Opus frames
 
-6. **Event Emission** ([RealtimeAudioSDK.ts](src/core/RealtimeAudioSDK.ts))
+6. **Event Emission** ([RTA.ts](src/core/RTA.ts))
    - Emits `audio-data` events with encoded chunks
    - Emits `processed-audio` events with VAD results
    - Emits device and state change events
@@ -120,14 +120,14 @@ src/
 1. Create processor class in `src/processing/`
 2. Add configuration to `ProcessingConfig` in [types/index.ts](src/types/index.ts)
 3. Integrate in [AudioProcessor.ts](src/processing/AudioProcessor.ts) process method
-4. Update SDK config in [RealtimeAudioSDK.ts](src/core/RealtimeAudioSDK.ts)
+4. Update SDK config in [RTA.ts](src/core/RTA.ts)
 
 ### Adding a New Encoder
 
 1. Create encoder class in `src/encoding/`
 2. Implement interface: `initialize()`, `encode()`, `flush()`, `close()`
 3. Add codec type to `AudioCodec` in [types/index.ts](src/types/index.ts)
-4. Add initialization logic in [RealtimeAudioSDK.ts](src/core/RealtimeAudioSDK.ts):initializeEncoder()
+4. Add initialization logic in [RTA.ts](src/core/RTA.ts):initializeEncoder()
 
 ### Modifying AudioWorklet
 
@@ -179,7 +179,7 @@ if (!('AudioEncoder' in window)) {
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   RealtimeAudioSDK                       │
+│                   RTA                       │
 │  (主入口、配置管理、事件协调)                             │
 └────────────┬────────────────────────────────────────────┘
              │
@@ -460,7 +460,7 @@ AudioEncoder
     ├─ WebCodecs Opus (优先)
     └─ PCM fallback
     ↓
-RealtimeAudioSDK
+RTA
     └─ emit('audio-data', EncodedAudioChunk)
     ↓
 应用层 (WebSocket 发送)
@@ -470,7 +470,7 @@ RealtimeAudioSDK
 
 ```typescript
 // 初始化 SDK
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   sampleRate: 16000,
   channelCount: 1,
   frameSize: 20,

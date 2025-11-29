@@ -15,6 +15,7 @@ export class AudioCapture extends EventEmitter<AudioCaptureEvents> {
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private isCapturing: boolean = false;
+  private currentOptions: CaptureOptions | null = null;
 
   /**
    * Start audio capture
@@ -52,6 +53,7 @@ export class AudioCapture extends EventEmitter<AudioCaptureEvents> {
       await this.setupAudioWorklet(options);
 
       this.isCapturing = true;
+      this.currentOptions = options; // Save current options for rollback
     } catch (error) {
       this.cleanup();
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -186,19 +188,60 @@ export class AudioCapture extends EventEmitter<AudioCaptureEvents> {
   async stop(): Promise<void> {
     this.cleanup();
     this.isCapturing = false;
+    this.currentOptions = null;
   }
 
   /**
-   * Switch to a different audio device
+   * Switch to a different audio device with automatic rollback on failure
    */
   async switchDevice(newDeviceId: string, options: CaptureOptions): Promise<void> {
     const wasCapturing = this.isCapturing;
+    if (!wasCapturing) {
+      return;
+    }
 
-    await this.stop();
+    // Save current device info for potential rollback
+    const oldOptions = this.currentOptions;
+    const oldDeviceId = oldOptions?.deviceId;
 
-    if (wasCapturing) {
+    try {
+      // Stop current capture
+      await this.stop();
+
+      // Start with new device
       const newOptions = { ...options, deviceId: newDeviceId };
       await this.start(newOptions);
+
+      console.log(`[AudioCapture] Successfully switched from device ${oldDeviceId} to ${newDeviceId}`);
+    } catch (error) {
+      console.error(`[AudioCapture] Failed to switch to device ${newDeviceId}:`, error);
+
+      // Attempt to rollback to old device
+      if (oldOptions) {
+        try {
+          console.log(`[AudioCapture] Attempting to rollback to previous device ${oldDeviceId}`);
+          await this.start(oldOptions);
+          console.log(`[AudioCapture] Successfully rolled back to device ${oldDeviceId}`);
+          
+          // Re-throw error to notify caller that switch failed but rollback succeeded
+          const rollbackError = new Error(`Failed to switch to device ${newDeviceId}, rolled back to ${oldDeviceId}`);
+          (rollbackError as any).code = 'DEVICE_SWITCH_FAILED_ROLLBACK_SUCCESS';
+          (rollbackError as any).originalError = error;
+          throw rollbackError;
+        } catch (rollbackError) {
+          // Rollback also failed - system is now in stopped state
+          console.error(`[AudioCapture] Rollback to device ${oldDeviceId} also failed:`, rollbackError);
+          
+          const criticalError = new Error(`Failed to switch to device ${newDeviceId} and rollback to ${oldDeviceId} also failed`);
+          (criticalError as any).code = 'DEVICE_SWITCH_FAILED_ROLLBACK_FAILED';
+          (criticalError as any).originalError = error;
+          (criticalError as any).rollbackError = rollbackError;
+          throw criticalError;
+        }
+      } else {
+        // No previous device to rollback to
+        throw error;
+      }
     }
   }
 

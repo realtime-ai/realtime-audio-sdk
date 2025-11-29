@@ -14,7 +14,7 @@ export default defineConfig(({ command, mode }) => ({
   build: command === 'build' ? {
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      name: 'RealtimeAudioSDK',
+      name: 'RTA',
       formats: ['es', 'cjs'],
       fileName: (format) => `index.${format === 'es' ? 'js' : 'cjs'}`,
     },

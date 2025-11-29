@@ -69,7 +69,7 @@ this.sampleBuffer = combinedAudio.slice(offset);
 No changes required! Simply configure your desired frame size:
 
 ```javascript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   frameSize: 20,  // Works with 20, 40, or 60ms
   processing: {
     vad: {
