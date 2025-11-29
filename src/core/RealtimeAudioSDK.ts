@@ -16,9 +16,9 @@ import type {
 import type { VADResultEvent } from '@/vad/SileroVAD';
 
 /**
- * Main RealtimeAudioSDK class
+ * Main RTA (Real-Time Audio) class
  */
-export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
+export class RTA extends EventEmitter<SDKEvents> {
   private config: Required<SDKConfig>;
   private state: SDKState = 'idle';
   private deviceManager: DeviceManager;
@@ -29,6 +29,11 @@ export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
 
   // Cache for the latest VAD result (updated asynchronously)
   private latestVADResult: VADResultEvent | null = null;
+
+  // Device switching state
+  private isSwitchingDevice: boolean = false;
+  private deviceSwitchRetryCount: number = 0;
+  private readonly MAX_DEVICE_SWITCH_RETRIES = 3;
 
   constructor(config: SDKConfig = {}) {
     super();
@@ -82,13 +87,34 @@ export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
 
       // Auto-switch to default device if enabled
       if (this.config.autoSwitchDevice && this.state === 'recording') {
+        // Check if we've exceeded retry limit
+        if (this.deviceSwitchRetryCount >= this.MAX_DEVICE_SWITCH_RETRIES) {
+          console.error(`[RTA] Max device switch retries (${this.MAX_DEVICE_SWITCH_RETRIES}) exceeded, stopping auto-switch`);
+          this.handleError(new Error('Maximum device switch retry attempts exceeded'));
+          return;
+        }
+
+        this.deviceSwitchRetryCount++;
+        console.log(`[RTA] Device unplugged, attempting auto-switch (attempt ${this.deviceSwitchRetryCount}/${this.MAX_DEVICE_SWITCH_RETRIES})`);
+
         try {
           const defaultDevice = await this.deviceManager.getDefaultDevice();
           if (defaultDevice) {
             await this.setDevice(defaultDevice.deviceId);
+            console.log(`[RTA] Auto-switched to default device: ${defaultDevice.label}`);
+          } else {
+            console.warn('[RTA] No default device available for auto-switch');
           }
         } catch (error) {
+          console.error('[RTA] Auto-switch failed:', error);
           this.handleError(error as Error);
+          
+          // If this was the last retry, emit a critical error
+          if (this.deviceSwitchRetryCount >= this.MAX_DEVICE_SWITCH_RETRIES) {
+          const criticalError = new Error('Failed to auto-switch device after multiple attempts');
+          (criticalError as SDKError).code = 'AUTO_SWITCH_FAILED';
+          this.handleError(criticalError);
+          }
         }
       }
     });
@@ -109,10 +135,6 @@ export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
     // VAD events from AudioProcessor
     this.audioProcessor.on('speech-state', (event) => {
       this.emit('speech-state', event);
-    });
-
-    this.audioProcessor.on('speech-segment', (event) => {
-      this.emit('speech-segment', event);
     });
 
     // Cache VAD results from async processing
@@ -196,19 +218,54 @@ export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
    * Set the audio input device
    */
   async setDevice(deviceId: string): Promise<void> {
+    // Prevent concurrent device switches
+    if (this.isSwitchingDevice) {
+      console.warn('[RTA] Device switch already in progress, ignoring request');
+      return;
+    }
+
     if (this.state === 'recording') {
       // Switch device while recording
-      const captureOptions = this.getCaptureOptions(deviceId);
-      await this.audioCapture.switchDevice(deviceId, captureOptions);
-      this.deviceManager.setCurrentDevice(deviceId);
+      this.isSwitchingDevice = true;
+      
+      try {
+        const captureOptions = this.getCaptureOptions(deviceId);
+        await this.audioCapture.switchDevice(deviceId, captureOptions);
+        this.deviceManager.setCurrentDevice(deviceId);
 
-      const device = await this.deviceManager.getDeviceById(deviceId);
-      if (device) {
-        const event: DeviceEvent = {
-          type: 'changed',
-          device
+        const device = await this.deviceManager.getDeviceById(deviceId);
+        if (device) {
+          const event: DeviceEvent = {
+            type: 'changed',
+            device
+          };
+          this.emit('device', event);
+        }
+        
+        // Reset retry count on successful switch
+        this.deviceSwitchRetryCount = 0;
+        console.log(`[RTA] Successfully switched to device: ${deviceId}`);
+      } catch (error) {
+        console.error(`[RTA] Failed to switch device:`, error);
+        
+        // Determine if rollback succeeded or failed
+        const errorWithCode = error as Error & { code?: string };
+        const errorCode = errorWithCode.code;
+        const rolledBack = errorCode === 'DEVICE_SWITCH_FAILED_ROLLBACK_SUCCESS';
+        
+        // Emit device switch failed event
+        const failedEvent: DeviceEvent = {
+          type: 'switch-failed',
+          deviceId,
+          error: error as Error,
+          rolledBack
         };
-        this.emit('device', event);
+        this.emit('device', failedEvent);
+        
+        // Re-throw error for caller to handle
+        throw error;
+      } finally {
+        this.isSwitchingDevice = false;
       }
     } else {
       // Just update config for next start
@@ -470,3 +527,8 @@ export class RealtimeAudioSDK extends EventEmitter<SDKEvents> {
     this.audioProcessor.removeAllListeners();
   }
 }
+
+/**
+ * @deprecated Use RTA instead. RealtimeAudioSDK will be removed in a future version.
+ */
+export class RealtimeAudioSDK extends RTA {}

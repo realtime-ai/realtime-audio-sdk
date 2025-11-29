@@ -2,14 +2,13 @@ import type {
   AudioProcessorResult,
   ProcessingConfig,
   VADStateEvent,
-  VADSegmentEvent
+  VADSegment
 } from '../types';
 import { EventEmitter } from '../core/EventEmitter';
 import { SileroVAD, VADResultEvent } from '../vad/SileroVAD';
 
 interface AudioProcessorEvents {
   'speech-state': (event: VADStateEvent) => void;
-  'speech-segment': (event: VADSegmentEvent) => void;
   'vad-result': (event: VADResultEvent) => void;
 }
 
@@ -72,33 +71,33 @@ export class AudioProcessor extends EventEmitter<AudioProcessorEvents> {
   }): void {
     console.log(`[AudioProcessor] emitVADEvent called - type: ${type}, hasSegment: ${!!data.segment}`);
 
-    const event: VADStateEvent = {
-      type,
-      timestamp: data.timestamp,
-      probability: data.probability,
-      duration: type === 'end' && data.segment ? data.segment.duration : undefined
-    };
-    console.log(`[AudioProcessor] Emitting speech-state event:`, event);
-    this.emit('speech-state', event);
-
-    // Emit speech-segment event if segment data is available
-    if (type === 'end' && data.segment) {
-      const segmentEvent: VADSegmentEvent = {
+    const segment: VADSegment | undefined = (type === 'end' && data.segment)
+      ? {
         audio: data.segment.audioData || new Float32Array(0),
         startTime: data.segment.start * 1000,      // Convert seconds to milliseconds
         endTime: data.segment.end * 1000,          // Convert seconds to milliseconds
         duration: data.segment.duration,           // Already in milliseconds
         avgProbability: data.probability,
         confidence: this.calculateConfidence(data.probability)
-      };
-      console.log(`[AudioProcessor] Emitting speech-segment event:`, {
-        duration: segmentEvent.duration,
-        audioLength: segmentEvent.audio.length,
-        startTime: segmentEvent.startTime.toFixed(0) + 'ms',
-        endTime: segmentEvent.endTime.toFixed(0) + 'ms'
-      });
-      this.emit('speech-segment', segmentEvent);
-    }
+      }
+      : undefined;
+
+    const event: VADStateEvent = {
+      type,
+      timestamp: data.timestamp,
+      probability: data.probability,
+      duration: type === 'end' && data.segment ? data.segment.duration : undefined,
+      segment
+    };
+
+    console.log(`[AudioProcessor] Emitting speech-state event:`, {
+      type: event.type,
+      probability: event.probability,
+      timestamp: event.timestamp,
+      hasSegment: !!event.segment
+    });
+
+    this.emit('speech-state', event);
   }
 
   /**

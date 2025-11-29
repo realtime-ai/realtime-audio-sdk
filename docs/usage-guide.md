@@ -21,10 +21,10 @@ npm install @realtime-ai/audio-sdk
 ### 最简单的使用
 
 ```typescript
-import { RealtimeAudioSDK } from '@realtime-ai/audio-sdk';
+import { RTA } from '@realtime-ai/audio-sdk';
 
 // 创建实例（使用默认配置）
-const sdk = new RealtimeAudioSDK();
+const sdk = new RTA();
 
 // 监听统一的音频事件（包含所有帧数据）
 sdk.on('audio', (event) => {
@@ -142,7 +142,7 @@ interface SDKConfig {
 #### 1. 实时对话配置（低延迟）
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   frameSize: 20,        // 20ms 帧
   sampleRate: 16000,    // 16kHz
   channelCount: 1,      // 单声道
@@ -165,7 +165,7 @@ const sdk = new RealtimeAudioSDK({
 #### 2. 转录配置（平衡）
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   frameSize: 40,        // 40ms 帧
   sampleRate: 16000,
   encoding: {
@@ -187,7 +187,7 @@ const sdk = new RealtimeAudioSDK({
 #### 3. 高质量录音配置
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   frameSize: 60,
   sampleRate: 48000,    // 高采样率
   channelCount: 2,      // 立体声
@@ -206,7 +206,7 @@ const sdk = new RealtimeAudioSDK({
 #### 4. 原始 PCM 数据配置
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   frameSize: 20,
   sampleRate: 16000,
   encoding: {
@@ -222,7 +222,7 @@ sdk.on('audio', (event) => {
 
 ## API 参考
 
-### RealtimeAudioSDK
+### RTA
 
 #### 构造函数
 
@@ -430,22 +430,15 @@ sdk.on('speech-state', (event: VADStateEvent) => {
   } else {
     console.log('语音结束:', event.timestamp);
     console.log('持续时长:', event.duration);
+    if (event.segment) {
+      console.log('语音片段音频:', event.segment.audio);      // Float32Array
+      console.log('开始时间:', event.segment.startTime);
+      console.log('结束时间:', event.segment.endTime);
+      console.log('持续时长:', event.segment.duration);
+      console.log('平均概率:', event.segment.avgProbability);
+      console.log('置信度:', event.segment.confidence);
+    }
   }
-});
-```
-
-##### speech-segment
-
-完整的语音片段（包含前置填充）
-
-```typescript
-sdk.on('speech-segment', (segment: VADSegmentEvent) => {
-  console.log('语音片段音频:', segment.audio);      // Float32Array
-  console.log('开始时间:', segment.startTime);
-  console.log('结束时间:', segment.endTime);
-  console.log('持续时长:', segment.duration);
-  console.log('平均概率:', segment.avgProbability);
-  console.log('置信度:', segment.confidence);
 });
 ```
 
@@ -495,9 +488,9 @@ sdk.on('error', (error: Error) => {
 ### 场景 1：实时语音转录
 
 ```typescript
-import { RealtimeAudioSDK } from '@realtime-ai/audio-sdk';
+import { RTA } from '@realtime-ai/audio-sdk';
 
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   frameSize: 20,
   encoding: {
     enabled: true,
@@ -538,7 +531,7 @@ await sdk.start();
 ### 场景 2：实时翻译
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   frameSize: 40,
   sampleRate: 16000,
   encoding: {
@@ -570,7 +563,7 @@ await sdk.start();
 ### 场景 3：AI 实时对话
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   frameSize: 20,
   encoding: {
     enabled: true,
@@ -633,7 +626,7 @@ await sdk.start();
 ### 场景 4：多设备切换
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   autoSwitchDevice: true, // 设备拔出时自动切换
 });
 
@@ -763,7 +756,7 @@ sdk.updateConfig({
 ### 4. 如何降低延迟？
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   frameSize: 20,        // 使用最小帧大小
   sampleRate: 16000,    // 不要使用过高采样率
   encoding: {
@@ -791,7 +784,7 @@ sdk.on('audio', (chunk) => {
 });
 
 // 方案 2: 降低比特率
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   encoding: {
     enabled: true,
     codec: 'opus',
@@ -827,10 +820,10 @@ try {
 ```typescript
 // 组件卸载时清理
 class AudioRecorder {
-  private sdk: RealtimeAudioSDK;
+  private sdk: RTA;
 
   constructor() {
-    this.sdk = new RealtimeAudioSDK();
+    this.sdk = new RTA();
   }
 
   async cleanup() {
@@ -840,7 +833,7 @@ class AudioRecorder {
 
 // React 示例
 useEffect(() => {
-  const sdk = new RealtimeAudioSDK();
+  const sdk = new RTA();
 
   return () => {
     sdk.destroy(); // 组件卸载时清理
@@ -892,7 +885,7 @@ self.onmessage = (e) => {
 
 ```typescript
 import type {
-  RealtimeAudioSDK,
+  RTA,
   SDKConfig,
   EncodedAudioChunk,
   ProcessedAudioData

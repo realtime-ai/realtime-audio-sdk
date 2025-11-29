@@ -5,7 +5,7 @@ import { AudioLoader, type AudioData } from './utils/audio-loader';
 import type {
   AudioProcessorResult,
   VADStateEvent,
-  VADSegmentEvent,
+  VADSegment,
   VADConfig
 } from '../src/types';
 
@@ -67,7 +67,7 @@ describe.skip('VAD (Voice Activity Detection) Tests', () => {
 
   describe('Silero VAD', () => {
     let processor: AudioProcessor;
-    let speechSegments: VADSegmentEvent[] = [];
+    let speechSegments: VADSegment[] = [];
     let speechStateEvents: VADStateEvent[] = [];
 
     beforeEach(() => {
@@ -93,10 +93,9 @@ describe.skip('VAD (Voice Activity Detection) Tests', () => {
       // Setup event listeners
       processor.on('speech-state', (event: VADStateEvent) => {
         speechStateEvents.push(event);
-      });
-
-      processor.on('speech-segment', (segment: VADSegmentEvent) => {
-        speechSegments.push(segment);
+        if (event.type === 'end' && event.segment) {
+          speechSegments.push(event.segment);
+        }
       });
 
       // Initialize Silero VAD
@@ -314,10 +313,11 @@ describe.skip('VAD (Voice Activity Detection) Tests', () => {
 
       await processor.initialize();
 
-      const speechSegments: VADSegmentEvent[] = [];
-
-      processor.on('speech-segment', (segment: VADSegmentEvent) => {
-        speechSegments.push(segment);
+      const speechSegments: VADSegment[] = [];
+      processor.on('speech-state', (event: VADStateEvent) => {
+        if (event.type === 'end' && event.segment) {
+          speechSegments.push(event.segment);
+        }
       });
 
       // Process only first half of audio (simulate incomplete stream)

@@ -2,22 +2,22 @@
 
 ## Table of Contents
 
-- [RealtimeAudioSDK](#realtimeaudiosdk)
+- [RTA](#realtimeaudiosdk)
 - [Configuration](#configuration)
 - [Events](#events)
 - [Type Definitions](#type-definitions)
 
-## RealtimeAudioSDK
+## RTA
 
 The main class for real-time audio capture, processing, and encoding.
 
 ### Constructor
 
 ```typescript
-new RealtimeAudioSDK(config?: SDKConfig)
+new RTA(config?: SDKConfig)
 ```
 
-Creates a new instance of the RealtimeAudioSDK.
+Creates a new instance of the RTA.
 
 **Parameters:**
 - `config` (optional): Configuration object for the SDK
@@ -258,26 +258,14 @@ interface VADStateEvent {
   timestamp: number;          // Timestamp in milliseconds
   probability: number;        // Speech probability (0-1)
   duration?: number;          // Duration in ms (end event only)
-}
-```
-
-### speech-segment
-
-Complete speech segments with audio data.
-
-```typescript
-sdk.on('speech-segment', (segment: VADSegmentEvent) => void)
-```
-
-**Event Data:**
-```typescript
-interface VADSegmentEvent {
-  audio: Float32Array;        // Complete audio segment
-  startTime: number;          // Start timestamp (ms)
-  endTime: number;            // End timestamp (ms)
-  duration: number;           // Total duration (ms)
-  avgProbability: number;     // Average speech probability
-  confidence: number;         // Segment confidence (0-1)
+  segment?: {                 // Present on end events when a full segment is available
+    audio: Float32Array;      // Complete audio segment
+    startTime: number;        // Start timestamp (ms)
+    endTime: number;          // End timestamp (ms)
+    duration: number;         // Total duration (ms)
+    avgProbability: number;   // Average speech probability
+    confidence: number;       // Segment confidence (0-1)
+  };
 }
 ```
 
@@ -374,7 +362,7 @@ type AudioCodec = 'opus' | 'pcm';
 ### Basic Usage
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   frameSize: 20,
   encoding: { enabled: true, codec: 'opus' }
 });
@@ -389,7 +377,7 @@ await sdk.start();
 ### With VAD
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   processing: {
     vad: {
       enabled: true,
@@ -401,10 +389,9 @@ const sdk = new RealtimeAudioSDK({
 
 sdk.on('speech-state', (event) => {
   console.log(event.type === 'start' ? 'Speech started' : 'Speech ended');
-});
-
-sdk.on('speech-segment', (segment) => {
-  console.log('Got speech segment:', segment.duration, 'ms');
+  if (event.type === 'end' && event.segment) {
+    console.log('Got speech segment:', event.segment.duration, 'ms');
+  }
 });
 
 await sdk.start();

@@ -31,10 +31,10 @@ npm install @realtime-ai/audio-sdk
 ## Quick Start
 
 ```typescript
-import { RealtimeAudioSDK } from '@realtime-ai/audio-sdk';
+import { RTA } from '@realtime-ai/audio-sdk';
 
 // Initialize SDK
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   sampleRate: 16000,
   channelCount: 1,
   frameSize: 20, // 20ms chunks
@@ -129,7 +129,7 @@ interface ProcessingConfig {
 
 ## API Reference
 
-### RealtimeAudioSDK
+### RTA
 
 #### Methods
 
@@ -147,8 +147,7 @@ interface ProcessingConfig {
 
 **Audio Events:**
 - `audio` - Unified audio event with all frame data (raw, encoded, metadata, processing results)
-- `speech-state` - Speech state changes (start/end events)
-- `speech-segment` - Complete speech segments with audio data
+- `speech-state` - Speech state changes (start/end events with segment payload on end)
 
 **Device Events:**
 - `device` - All device events (changed/list-updated/unplugged)
@@ -189,7 +188,7 @@ sdk.on('device', (event) => {
 ### Voice Activity Detection
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   processing: {
     vad: {
       enabled: true,
@@ -209,30 +208,29 @@ sdk.on('audio', (event) => {
   }
 });
 
-// Or listen for speech state transitions only
+// Or listen for speech state transitions (end events include segment data)
 sdk.on('speech-state', (event) => {
   if (event.type === 'start') {
     console.log('Speech started at:', event.timestamp);
   } else {
     console.log('Speech ended, duration:', event.duration, 'ms');
-  }
-});
 
-// Get complete speech segments for processing
-sdk.on('speech-segment', (segment) => {
-  console.log('Speech segment:', {
-    duration: segment.duration,
-    confidence: segment.confidence,
-    audioSamples: segment.audio.length
-  });
-  // Send segment.audio to transcription service
+    if (event.segment) {
+      console.log('Speech segment:', {
+        duration: event.segment.duration,
+        confidence: event.segment.confidence,
+        audioSamples: event.segment.audio.length
+      });
+      // Send event.segment.audio to transcription service
+    }
+  }
 });
 ```
 
 ### Real-time Transcription
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   frameSize: 20,
   encoding: {
     enabled: true,
@@ -257,11 +255,12 @@ sdk.on('audio', (event) => {
   }
 });
 
-// Or send complete speech segments for better accuracy
-sdk.on('speech-segment', async (segment) => {
-  // Encode the segment if needed
-  const encoded = await encodeSegment(segment.audio);
-  ws.send(encoded);
+// Or send complete speech segments for better accuracy (available on speech-state end)
+sdk.on('speech-state', async (event) => {
+  if (event.type === 'end' && event.segment) {
+    const encoded = await encodeSegment(event.segment.audio);
+    ws.send(encoded);
+  }
 });
 
 ws.onmessage = (event) => {

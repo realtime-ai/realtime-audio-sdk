@@ -524,7 +524,7 @@
   </div>
 
   <script type="module">
-    import { RealtimeAudioSDK } from '../../src/index.ts';
+    import { RTA } from '../../src/index.ts';
 
     let sdk = null;
     let segments = [];
@@ -580,7 +580,7 @@
 
     // Initialize SDK
     function initSDK() {
-      sdk = new RealtimeAudioSDK({
+      sdk = new RTA({
         frameSize: 20,
         sampleRate: 16000,
         channelCount: 1,
@@ -611,18 +611,16 @@
         }
       });
 
-      // Speech segment event - main event for capturing segments
-      sdk.on('speech-segment', (event) => {
-        console.log('Speech segment received:', event);
-        addSegment(event);
-      });
-
-      // Speech state changes
+      // Speech state changes (segments are attached to end events)
       sdk.on('speech-state', (event) => {
         if (event.type === 'start') {
           console.log('Speech started');
         } else {
           console.log('Speech ended, duration:', event.duration + 'ms');
+          if (event.segment) {
+            console.log('Speech segment received:', event.segment);
+            addSegment(event.segment);
+          }
         }
       });
 
@@ -652,16 +650,16 @@
     }
 
     // Add a segment to the list
-    function addSegment(event) {
+    function addSegment(segmentData) {
       segmentCounter++;
       const segment = {
         id: segmentCounter,
-        audio: event.audio,
-        duration: event.duration,
-        confidence: event.confidence,
-        avgProbability: event.avgProbability,
-        startTime: event.startTime,
-        endTime: event.endTime,
+        audio: segmentData.audio,
+        duration: segmentData.duration,
+        confidence: segmentData.confidence,
+        avgProbability: segmentData.avgProbability,
+        startTime: segmentData.startTime,
+        endTime: segmentData.endTime,
         timestamp: new Date(),
       };
       

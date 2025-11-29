@@ -2,7 +2,7 @@
  * Realtime Audio SDK - Main entry point
  */
 
-export { RealtimeAudioSDK } from '@/core/RealtimeAudioSDK';
+export { RTA, RealtimeAudioSDK } from '@/core/RealtimeAudioSDK';
 export { DeviceManager } from '@/devices/DeviceManager';
 export { AudioProcessor } from '@/processing/AudioProcessor';
 export { OpusEncoder } from '@/encoding/OpusEncoder';
@@ -20,6 +20,7 @@ export type {
   AudioDataEvent,
   DeviceEvent,
   VADStateEvent,
+  VADSegment,
   VADSegmentEvent,
   VADResultEvent,
   SDKError,

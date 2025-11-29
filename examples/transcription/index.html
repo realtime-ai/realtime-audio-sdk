@@ -71,7 +71,7 @@
   </div>
 
   <script type="module">
-    import { RealtimeAudioSDK } from '../../src/index.ts';
+    import { RTA } from '../../src/index.ts';
 
     let sdk = null;
     let ws = null;
@@ -83,7 +83,7 @@
     const indicator = document.getElementById('indicator');
 
     // Initialize SDK
-    sdk = new RealtimeAudioSDK({
+    sdk = new RTA({
       frameSize: 20,
       sampleRate: 16000,
       channelCount: 1,
@@ -130,22 +130,22 @@
         addTranscript('[Speech detected]', 'info');
       } else {
         addTranscript(`[Speech ended - ${event.duration}ms]`, 'info');
-      }
-    });
 
-    // VAD speech segment events (can be sent to transcription service)
-    sdk.on('speech-segment', (event) => {
-      // Send complete speech segment to transcription service
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        // Convert Float32Array to Int16 PCM for transcription
-        const pcm = new Int16Array(event.audio.length);
-        for (let i = 0; i < event.audio.length; i++) {
-          const s = Math.max(-1, Math.min(1, event.audio[i]));
-          pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        }
-        // ws.send(pcm.buffer); // Send segment to transcription service
+         if (event.segment) {
+          const segment = event.segment;
+          // Send complete speech segment to transcription service
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            // Convert Float32Array to Int16 PCM for transcription
+            const pcm = new Int16Array(segment.audio.length);
+            for (let i = 0; i < segment.audio.length; i++) {
+              const s = Math.max(-1, Math.min(1, segment.audio[i]));
+              pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            // ws.send(pcm.buffer); // Send segment to transcription service
+          }
+          addTranscript(`[Segment: ${segment.duration}ms, confidence: ${segment.confidence.toFixed(2)}]`, 'info');
+         }
       }
-      addTranscript(`[Segment: ${event.duration}ms, confidence: ${event.confidence.toFixed(2)}]`, 'info');
     });
 
     // State changes

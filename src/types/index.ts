@@ -160,12 +160,14 @@ export interface VADStateEvent {
   probability: number;
   /** Duration of speech (only for 'end' event) */
   duration?: number;
+  /** Complete speech segment data (only for 'end' event) */
+  segment?: VADSegment;
 }
 
 /**
- * VAD speech segment event
+ * VAD speech segment payload
  */
-export interface VADSegmentEvent {
+export interface VADSegment {
   /** Complete audio segment with pre-padding */
   audio: Float32Array;
   /** Start timestamp in milliseconds */
@@ -179,6 +181,9 @@ export interface VADSegmentEvent {
   /** Segment confidence score (0-1) */
   confidence: number;
 }
+
+// Backward compatibility alias for the segment payload
+export type VADSegmentEvent = VADSegment;
 
 /**
  * VAD result event - emitted for each processed audio frame
@@ -197,13 +202,17 @@ export interface VADResultEvent {
  */
 export interface DeviceEvent {
   /** Event type */
-  type: 'changed' | 'list-updated' | 'unplugged';
+  type: 'changed' | 'list-updated' | 'unplugged' | 'switch-failed';
   /** Current device (for 'changed') */
   device?: MediaDeviceInfo;
   /** Device list (for 'list-updated') */
   devices?: MediaDeviceInfo[];
-  /** Device ID (for 'unplugged') */
+  /** Device ID (for 'unplugged' or 'switch-failed') */
   deviceId?: string;
+  /** Error details (for 'switch-failed') */
+  error?: Error;
+  /** Whether rollback succeeded (for 'switch-failed') */
+  rolledBack?: boolean;
 }
 
 /**
@@ -238,7 +247,6 @@ export interface SDKEvents {
 
   /** VAD state change events */
   'speech-state': (event: VADStateEvent) => void;
-  'speech-segment': (event: VADSegmentEvent) => void;
 
   /** VAD result event - fired asynchronously for each processed audio frame */
   'vad-result': (event: VADResultEvent) => void;
@@ -273,7 +281,7 @@ export interface AudioProcessorResult {
 /**
  * Event listener type
  */
-export type EventListener<T = any> = (data: T) => void;
+export type EventListener<T = unknown> = (data: T) => void;
 
 /**
  * Opus encoder configuration for WebCodecs

@@ -33,9 +33,9 @@ This downloads the Silero VAD ONNX model (~4.4MB) to `public/models/silero_vad_v
 ### Basic Setup
 
 ```typescript
-import { RealtimeAudioSDK } from '@realtime-ai/audio-sdk';
+import { RTA } from '@realtime-ai/audio-sdk';
 
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   sampleRate: 16000,
   channelCount: 1,
   frameSize: 20,
@@ -104,25 +104,19 @@ sdk.on('speech-state', (event) => {
       probability: event.probability,
       duration: event.duration
     });
-  }
-});
-```
 
-#### Complete Speech Segments
+    if (event.segment) {
+      console.log('Speech segment detected', {
+        startTime: event.segment.startTime,
+        endTime: event.segment.endTime,
+        duration: event.segment.duration,
+        avgProbability: event.segment.avgProbability,
+        confidence: event.segment.confidence
+      });
 
-```typescript
-sdk.on('speech-segment', (segment) => {
-  console.log('Speech segment detected', {
-    startTime: segment.startTime,
-    endTime: segment.endTime,
-    duration: segment.duration,
-    avgProbability: segment.avgProbability,
-    confidence: segment.confidence
-  });
-
-  // Send audio segment for transcription
-  if (segment.audio) {
-    sendToTranscriptionAPI(segment.audio);
+      // Send audio segment for transcription
+      sendToTranscriptionAPI(event.segment.audio);
+    }
   }
 });
 ```
@@ -133,7 +127,7 @@ sdk.on('speech-segment', (segment) => {
 ### Custom Configuration
 
 ```typescript
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   processing: {
     vad: {
       enabled: true,
@@ -157,7 +151,7 @@ const sdk = new RealtimeAudioSDK({
 
 ```typescript
 // Start with default VAD settings
-const sdk = new RealtimeAudioSDK({
+const sdk = new RTA({
   processing: {
     vad: {
       enabled: true,
@@ -185,9 +179,9 @@ await sdk.updateConfig({
 // Collect speech segments for batch processing
 const speechSegments: Float32Array[] = [];
 
-sdk.on('vad-speech-segment', (segment) => {
-  if (segment.audioData) {
-    speechSegments.push(segment.audioData);
+sdk.on('speech-state', (event) => {
+  if (event.type === 'end' && event.segment?.audio) {
+    speechSegments.push(event.segment.audio);
 
     // Process when we have enough segments
     if (speechSegments.length >= 5) {

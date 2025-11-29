@@ -129,7 +129,7 @@
   <div class="logs" id="logs"></div>
 
   <script type="module">
-    import { RealtimeAudioSDK } from '../../src/index.ts';
+    import { RTA } from '../../src/index.ts';
 
     let sdk = null;
     let chunkCount = 0;
@@ -160,13 +160,14 @@
       if (vadCheckbox.checked) {
         processingConfig.vad = {
           enabled: true,
-          positiveSpeechThreshold: 0.6,  // Higher threshold to reduce false positives
-          negativeSpeechThreshold: 0.45, // Higher threshold for ending speech
-          silenceDuration: 800,           // Shorter silence duration (800ms)
+          positiveSpeechThreshold: 0.5,  // Speech detection threshold (lower = more sensitive)
+          negativeSpeechThreshold: 0.35, // Non-speech threshold
+          silenceDuration: 1000,          // Silence duration to end speech (1000ms)
           preSpeechPadDuration: 300,
-          minSpeechDuration: 100,         // Lower min duration to catch short utterances
-          modelPath: '/public/models/silero_vad_v5.onnx',
+          minSpeechDuration: 250,         // Minimum speech duration (250ms)
+          modelPath: '/models/silero_vad_v5.onnx',
         };
+        log('VAD config: threshold=0.5, silenceDuration=1000ms, minSpeech=250ms');
       }
 
       const config = {
@@ -180,7 +181,7 @@
         autoSwitchDevice: true,
       };
 
-      sdk = new RealtimeAudioSDK(config);
+      sdk = new RTA(config);
       setupEventListeners();
       log('SDK initialized');
     }
@@ -197,10 +198,28 @@
 
         // Update energy
         energyEl.textContent = processing.energy.toFixed(3);
+        
+        // Visual feedback for audio level
+        if (processing.energy > 0.01) {
+          energyEl.style.color = '#2ecc71'; // Green when audio detected
+        } else {
+          energyEl.style.color = '#e74c3c'; // Red when too quiet
+        }
 
         // Update VAD status if active
         if (processing.vad?.active) {
           isSpeechEl.textContent = processing.vad.isSpeech ? 'Yes' : 'No';
+        }
+      });
+
+      // Real-time VAD result event
+      sdk.on('vad-result', (event) => {
+        // Update speech detection status immediately
+        isSpeechEl.textContent = event.isSpeech ? 'Yes' : 'No';
+        // Log VAD probability for debugging
+        if (chunkCount % 10 === 0) { // Log every 10 frames to avoid spam
+          const currentEnergy = parseFloat(energyEl.textContent);
+          console.log(`VAD: isSpeech=${event.isSpeech}, probability=${event.probability.toFixed(3)}, energy=${currentEnergy.toFixed(4)}`);
         }
       });
 
@@ -218,12 +237,11 @@
           log(`Speech started (probability: ${event.probability.toFixed(2)})`);
         } else {
           log(`Speech ended (duration: ${event.duration}ms)`);
-        }
-      });
 
-      // VAD speech segment events
-      sdk.on('speech-segment', (event) => {
-        log(`Speech segment: ${event.duration}ms, confidence: ${event.confidence.toFixed(2)}, samples: ${event.audio.length}`);
+          if (event.segment) {
+            log(`🎤 Speech segment detected: ${event.segment.duration}ms (${event.segment.audio.length} samples)`);
+          }
+        }
       });
 
       // Device events (unified)
@@ -233,10 +251,17 @@
             log(`Device changed: ${event.device?.label}`);
             break;
           case 'unplugged':
-            log(`Device unplugged: ${event.deviceId}`);
+            log(`⚠️ Device unplugged: ${event.deviceId}`);
             break;
           case 'list-updated':
             log(`Device list updated: ${event.devices?.length} devices`);
+            break;
+          case 'switch-failed':
+            if (event.rolledBack) {
+              log(`⚠️ Device switch failed but rolled back successfully`, 'error');
+            } else {
+              log(`❌ Device switch failed: ${event.error?.message}`, 'error');
+            }
             break;
         }
       });
