@@ -6,6 +6,12 @@ interface AudioCaptureEvents {
   'error': (error: Error) => void;
 }
 
+type SwitchError = Error & {
+  code?: string;
+  originalError?: unknown;
+  rollbackError?: unknown;
+};
+
 /**
  * Handles audio capture using Web Audio API and AudioWorklet
  */
@@ -224,18 +230,18 @@ export class AudioCapture extends EventEmitter<AudioCaptureEvents> {
           console.log(`[AudioCapture] Successfully rolled back to device ${oldDeviceId}`);
           
           // Re-throw error to notify caller that switch failed but rollback succeeded
-          const rollbackError = new Error(`Failed to switch to device ${newDeviceId}, rolled back to ${oldDeviceId}`);
-          (rollbackError as any).code = 'DEVICE_SWITCH_FAILED_ROLLBACK_SUCCESS';
-          (rollbackError as any).originalError = error;
+          const rollbackError = new Error(`Failed to switch to device ${newDeviceId}, rolled back to ${oldDeviceId}`) as SwitchError;
+          rollbackError.code = 'DEVICE_SWITCH_FAILED_ROLLBACK_SUCCESS';
+          rollbackError.originalError = error;
           throw rollbackError;
         } catch (rollbackError) {
           // Rollback also failed - system is now in stopped state
           console.error(`[AudioCapture] Rollback to device ${oldDeviceId} also failed:`, rollbackError);
           
-          const criticalError = new Error(`Failed to switch to device ${newDeviceId} and rollback to ${oldDeviceId} also failed`);
-          (criticalError as any).code = 'DEVICE_SWITCH_FAILED_ROLLBACK_FAILED';
-          (criticalError as any).originalError = error;
-          (criticalError as any).rollbackError = rollbackError;
+          const criticalError = new Error(`Failed to switch to device ${newDeviceId} and rollback to ${oldDeviceId} also failed`) as SwitchError;
+          criticalError.code = 'DEVICE_SWITCH_FAILED_ROLLBACK_FAILED';
+          criticalError.originalError = error;
+          criticalError.rollbackError = rollbackError;
           throw criticalError;
         }
       } else {

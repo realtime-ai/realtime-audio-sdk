@@ -1,6 +1,7 @@
 import type { SileroVADConfig } from '../types';
 import { EventEmitter } from '../core/EventEmitter';
 import * as ort from 'onnxruntime-web/wasm';
+import type { InferenceSession, Tensor } from 'onnxruntime-web';
 
 interface VADEventData {
   isSpeech: boolean;
@@ -43,13 +44,13 @@ interface QueueItem {
  * Silero VAD implementation using ONNX Runtime
  */
 export class SileroVAD extends EventEmitter<SileroVADEvents> {
-  private session: any | null = null;
+  private session: InferenceSession | null = null;
   private config: Required<SileroVADConfig>;
   private state: VADState = 'silence';
 
   // Model states
-  private stateTensor: any | null = null; // State tensor [2, 1, 128] for Silero v5
-  private srTensor: any; // Sample rate tensor
+  private stateTensor: Tensor | null = null; // State tensor [2, 1, 128] for Silero v5
+  private srTensor: Tensor | null = null; // Sample rate tensor
 
   // Buffer management
   private audioBuffer: Float32Array[] = [];
@@ -178,7 +179,10 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
 
     try {
       while (this.processingQueue.length > 0 && !this.isClosing) {
-        const item = this.processingQueue.shift()!;
+        const item = this.processingQueue.shift();
+        if (!item) {
+          break;
+        }
         const result = await this.processAudioFrame(item.audioData, item.timestamp);
 
         // Emit result event asynchronously
@@ -278,7 +282,7 @@ export class SileroVAD extends EventEmitter<SileroVADEvents> {
    * Process a single frame through the model
    */
   private async processFrame(frame: Float32Array, _timestamp: number): Promise<number> {
-    if (!this.session || !this.stateTensor) {
+    if (!this.session || !this.stateTensor || !this.srTensor) {
       throw new Error('SileroVAD not initialized');
     }
 

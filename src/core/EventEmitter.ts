@@ -1,26 +1,36 @@
 import type { EventListener } from '../types';
 
-/**
- * Simple EventEmitter implementation
- */
+ /**
+  * Simple EventEmitter implementation
+  */
 export class EventEmitter<Events> {
-  private listeners: Map<keyof Events, Set<EventListener>> = new Map();
+  private listeners: Map<keyof Events, Set<(payload: unknown) => void>> = new Map();
+
+  private getHandlerSet<K extends keyof Events>(event: K): Set<(payload: unknown) => void> {
+    const existing = this.listeners.get(event);
+    if (existing) return existing;
+    const created = new Set<(payload: unknown) => void>();
+    this.listeners.set(event, created);
+    return created;
+  }
+
+  private getHandlers<K extends keyof Events>(event: K): Set<(payload: unknown) => void> | undefined {
+    return this.listeners.get(event);
+  }
 
   /**
    * Add an event listener
    */
-  on<K extends keyof Events>(event: K, listener: Events[K] extends (...args: any[]) => any ? Events[K] : never): void {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
-    }
-    this.listeners.get(event)!.add(listener as EventListener);
+  on<K extends keyof Events>(event: K, listener: Events[K] extends (arg: infer P) => void ? (arg: P) => void : never): void {
+    const handlers = this.getHandlerSet(event);
+    handlers.add(listener as EventListener);
   }
 
   /**
    * Remove an event listener
    */
-  off<K extends keyof Events>(event: K, listener: Events[K] extends (...args: any[]) => any ? Events[K] : never): void {
-    const eventListeners = this.listeners.get(event);
+  off<K extends keyof Events>(event: K, listener: Events[K] extends (arg: infer P) => void ? (arg: P) => void : never): void {
+    const eventListeners = this.getHandlers(event);
     if (eventListeners) {
       eventListeners.delete(listener as EventListener);
     }
@@ -29,12 +39,12 @@ export class EventEmitter<Events> {
   /**
    * Add a one-time event listener
    */
-  once<K extends keyof Events>(event: K, listener: Events[K] extends (...args: any[]) => any ? Events[K] : never): void {
-    const onceWrapper = ((data: any) => {
-      (listener as any)(data);
-      this.off(event, onceWrapper as any);
-    }) as any;
-    this.on(event, onceWrapper);
+  once<K extends keyof Events>(event: K, listener: Events[K] extends (arg: infer P) => void ? (arg: P) => void : never): void {
+    const onceWrapper = (data: unknown) => {
+      (listener as EventListener)(data as never);
+      this.off(event, onceWrapper as typeof listener);
+    };
+    this.on(event, onceWrapper as typeof listener);
   }
 
   /**
@@ -42,13 +52,13 @@ export class EventEmitter<Events> {
    */
   protected emit<K extends keyof Events>(
     event: K,
-    data: Events[K] extends (...args: any[]) => any ? Parameters<Events[K]>[0] : never
+    data: Events[K] extends (arg: infer P) => void ? P : never
   ): void {
-    const eventListeners = this.listeners.get(event);
+    const eventListeners = this.getHandlers(event);
     if (eventListeners) {
       eventListeners.forEach((listener) => {
         try {
-          listener(data);
+          listener(data as unknown);
         } catch (error) {
           console.error(`Error in event listener for "${String(event)}":`, error);
         }
