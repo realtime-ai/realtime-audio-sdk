@@ -524,7 +524,7 @@
   </div>
 
   <script type="module">
-    import { RTA } from '../../src/index.ts';
+    import { RTA } from '@/index.ts';
 
     let sdk = null;
     let segments = [];
@@ -574,7 +574,7 @@
         silenceDuration: parseInt(silenceDuration.value),
         preSpeechPadDuration: 300,
         minSpeechDuration: parseInt(minSpeechDuration.value),
-        modelPath: '/public/models/silero_vad_v5.onnx',
+        modelPath: '/models/silero_vad_v5.onnx',
       };
     }
 
