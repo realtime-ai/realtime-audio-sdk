@@ -2,8 +2,6 @@ import { EventEmitter } from './EventEmitter';
 import { AudioCapture } from '@/capture/AudioCapture';
 import { DeviceManager } from '@/devices/DeviceManager';
 import { AudioProcessor } from '@/processing/AudioProcessor';
-import { OpusEncoder } from '@/encoding/OpusEncoder';
-import { PCMEncoder } from '@/encoding/PCMEncoder';
 import type {
   SDKConfig,
   SDKEvents,
@@ -24,7 +22,6 @@ export class RTA extends EventEmitter<SDKEvents> {
   private deviceManager: DeviceManager;
   private audioCapture: AudioCapture;
   private audioProcessor: AudioProcessor;
-  private encoder: OpusEncoder | PCMEncoder | null = null;
   private frameCounter: number = 0;
 
   // Cache for the latest VAD result (updated asynchronously)
@@ -44,12 +41,6 @@ export class RTA extends EventEmitter<SDKEvents> {
       sampleRate: config.sampleRate || 16000,
       channelCount: config.channelCount || 1,
       frameSize: config.frameSize || 20,
-      encoding: {
-        enabled: config.encoding?.enabled ?? true,
-        codec: config.encoding?.codec || 'opus',
-        bitrate: config.encoding?.bitrate || 16000,
-        complexity: config.encoding?.complexity || 5,
-      },
       processing: {
         vad: config.processing?.vad,
         normalize: config.processing?.normalize,
@@ -120,9 +111,9 @@ export class RTA extends EventEmitter<SDKEvents> {
     });
 
     // Audio capture events
-    this.audioCapture.on('audio-data', async ({ data, timestamp }) => {
+    this.audioCapture.on('audio-data', ({ data, timestamp }) => {
       try {
-        await this.handleAudioFrame(data, timestamp);
+        this.handleAudioFrame(data, timestamp);
       } catch (error) {
         this.handleError(error as Error);
       }
@@ -150,29 +141,18 @@ export class RTA extends EventEmitter<SDKEvents> {
    * Note: VAD is processed asynchronously, so VAD results in the audio event
    * may be from a previous frame. For real-time VAD updates, listen to 'vad-result' event.
    */
-  private async handleAudioFrame(
+  private handleAudioFrame(
     rawData: Float32Array,
     timestamp: number
-  ): Promise<void> {
+  ): void {
     // Process audio (non-blocking, VAD is queued for async processing)
     const processed = this.audioProcessor.process(rawData, timestamp);
-
-    // Encode if enabled
-    let encoded: ArrayBuffer | undefined;
-    if (this.config.encoding.enabled && this.encoder) {
-      const encodedChunk = await this.encoder.encode(processed.data, timestamp);
-      if (encodedChunk) {
-        encoded = encodedChunk.data;
-      }
-    }
 
     // Build unified audio event
     // Note: VAD result is from the cached async result, may not correspond to this exact frame
     const audioEvent: AudioDataEvent = {
       audio: {
         raw: processed.data,
-        encoded,
-        format: encoded ? this.config.encoding.codec : undefined
       },
       metadata: {
         timestamp,
@@ -314,11 +294,6 @@ export class RTA extends EventEmitter<SDKEvents> {
         console.log('VAD not enabled in config');
       }
 
-      // Initialize encoder if needed
-      if (this.config.encoding.enabled) {
-        await this.initializeEncoder();
-      }
-
       // Start capture
       const captureOptions = this.getCaptureOptions(deviceId);
       await this.audioCapture.start(captureOptions);
@@ -344,12 +319,6 @@ export class RTA extends EventEmitter<SDKEvents> {
 
       // Wait for VAD queue to be empty, then flush any pending speech segment
       await this.audioProcessor.flushAsync();
-
-      if (this.encoder) {
-        await this.encoder.flush();
-        this.encoder.close();
-        this.encoder = null;
-      }
 
       // Clear cached VAD result
       this.latestVADResult = null;
@@ -399,7 +368,6 @@ export class RTA extends EventEmitter<SDKEvents> {
     this.config = {
       ...this.config,
       ...config,
-      encoding: { ...this.config.encoding, ...config.encoding },
       processing: { ...this.config.processing, ...config.processing },
     };
 
@@ -455,31 +423,6 @@ export class RTA extends EventEmitter<SDKEvents> {
    */
   getConfig(): Required<SDKConfig> {
     return { ...this.config };
-  }
-
-  /**
-   * Initialize encoder based on config
-   */
-  private async initializeEncoder(): Promise<void> {
-    const encoderConfig = {
-      sampleRate: this.config.sampleRate,
-      numberOfChannels: this.config.channelCount,
-      bitrate: this.config.encoding.bitrate || 16000,
-      frameSize: this.config.frameSize,
-      complexity: this.config.encoding.complexity || 5,
-    };
-
-    // Try Opus first if supported
-    if (this.config.encoding.codec === 'opus' && OpusEncoder.isSupported()) {
-      this.encoder = new OpusEncoder(encoderConfig);
-      await this.encoder.initialize();
-      console.log('Using Opus encoder (WebCodecs)');
-    } else {
-      // Fallback to PCM
-      this.encoder = new PCMEncoder(encoderConfig);
-      await this.encoder.initialize();
-      console.log('Using PCM encoder (fallback)');
-    }
   }
 
   /**

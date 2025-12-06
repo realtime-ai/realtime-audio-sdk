@@ -5,8 +5,6 @@
 export { RTA, RealtimeAudioSDK } from '@/core/RealtimeAudioSDK';
 export { DeviceManager } from '@/devices/DeviceManager';
 export { AudioProcessor } from '@/processing/AudioProcessor';
-export { OpusEncoder } from '@/encoding/OpusEncoder';
-export { PCMEncoder } from '@/encoding/PCMEncoder';
 
 // Export types
 export type {
@@ -14,7 +12,6 @@ export type {
   SDKState,
   SDKEvents,
   CaptureOptions,
-  EncodingConfig,
   ProcessingConfig,
   VADConfig,
   AudioDataEvent,
@@ -25,8 +22,6 @@ export type {
   VADResultEvent,
   SDKError,
   FrameSize,
-  AudioCodec,
-  OpusEncoderConfig,
 } from '@/types';
 
 // Export SileroVAD for advanced usage

@@ -4,11 +4,6 @@
 export type FrameSize = 20 | 40 | 60;
 
 /**
- * Supported audio codecs
- */
-export type AudioCodec = 'opus' | 'pcm';
-
-/**
  * SDK state
  */
 export type SDKState = 'idle' | 'recording' | 'paused' | 'error';
@@ -56,20 +51,6 @@ export interface VADConfig {
 export type SileroVADConfig = VADConfig;
 
 /**
- * Audio encoding configuration
- */
-export interface EncodingConfig {
-  /** Enable encoding */
-  enabled: boolean;
-  /** Codec to use */
-  codec: AudioCodec;
-  /** Bitrate for Opus encoding (default: 16000) */
-  bitrate?: number;
-  /** Opus complexity 0-10 (default: 5) */
-  complexity?: number;
-}
-
-/**
  * Audio processing configuration
  */
 export interface ProcessingConfig {
@@ -91,8 +72,6 @@ export interface SDKConfig {
   channelCount?: number;
   /** Frame size in ms (default: 20) */
   frameSize?: FrameSize;
-  /** Encoding configuration */
-  encoding?: EncodingConfig;
   /** Processing configuration */
   processing?: ProcessingConfig;
   /** Auto-switch to default device when current device is unplugged */
@@ -107,10 +86,6 @@ export interface AudioDataEvent {
   audio: {
     /** Raw audio samples */
     raw: Float32Array;
-    /** Encoded audio data (if encoding enabled) */
-    encoded?: ArrayBuffer;
-    /** Encoding format */
-    format?: AudioCodec;
   };
 
   /** Audio metadata */
@@ -282,19 +257,3 @@ export interface AudioProcessorResult {
  * Event listener type
  */
 export type EventListener<T = unknown> = (data: T) => void;
-
-/**
- * Opus encoder configuration for WebCodecs
- */
-export interface OpusEncoderConfig {
-  /** Sample rate */
-  sampleRate: number;
-  /** Number of channels */
-  numberOfChannels: number;
-  /** Bitrate */
-  bitrate: number;
-  /** Frame size in ms */
-  frameSize: FrameSize;
-  /** Complexity 0-10 */
-  complexity?: number;
-}
