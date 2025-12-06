@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Realtime Audio SDK - Examples</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    header {
+      text-align: center;
+      color: white;
+      margin-bottom: 40px;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      margin: 0 0 10px 0;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    header p {
+      font-size: 1.1rem;
+      opacity: 0.9;
+      margin: 0;
+    }
+
+    .examples-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+    }
+
+    .example-card {
+      background: white;
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+      transition: transform 0.2s, box-shadow 0.2s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+
+    .example-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 15px 50px rgba(0,0,0,0.2);
+    }
+
+    .card-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 1.4rem;
+      font-weight: 600;
+      margin: 0 0 10px 0;
+      color: #1a1a2e;
+    }
+
+    .card-description {
+      color: #666;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      margin: 0 0 16px 0;
+    }
+
+    .card-features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .feature-tag {
+      background: #f0f4ff;
+      color: #4f46e5;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 40px;
+      color: white;
+      opacity: 0.8;
+    }
+
+    .footer a {
+      color: white;
+    }
+
+    .badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      color: white;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Realtime Audio SDK</h1>
+      <p>Audio capture, VAD, and real-time encoding for the Web</p>
+      <span class="badge">v0.1.0</span>
+    </header>
+
+    <div class="examples-grid">
+      <a href="./basic/" class="example-card">
+        <div class="card-icon">🎙️</div>
+        <h2 class="card-title">Basic Example</h2>
+        <p class="card-description">
+          Get started with audio capture, device selection, and real-time encoding.
+          Monitor audio energy levels and speech detection.
+        </p>
+        <div class="card-features">
+          <span class="feature-tag">Audio Capture</span>
+          <span class="feature-tag">Device Selection</span>
+          <span class="feature-tag">Opus Encoding</span>
+          <span class="feature-tag">VAD</span>
+        </div>
+      </a>
+
+      <a href="./vad/" class="example-card">
+        <div class="card-icon">🗣️</div>
+        <h2 class="card-title">VAD Demo</h2>
+        <p class="card-description">
+          Voice Activity Detection with Silero VAD v5. Capture speech segments
+          with configurable thresholds and real-time visualization.
+        </p>
+        <div class="card-features">
+          <span class="feature-tag">Silero VAD v5</span>
+          <span class="feature-tag">Speech Segments</span>
+          <span class="feature-tag">Waveform View</span>
+          <span class="feature-tag">Playback</span>
+        </div>
+      </a>
+
+      <a href="./transcription/" class="example-card">
+        <div class="card-icon">📝</div>
+        <h2 class="card-title">Transcription</h2>
+        <p class="card-description">
+          Real-time speech-to-text integration example. Demonstrates how to
+          connect the SDK to a transcription service via WebSocket.
+        </p>
+        <div class="card-features">
+          <span class="feature-tag">WebSocket</span>
+          <span class="feature-tag">Speech-to-Text</span>
+          <span class="feature-tag">Real-time</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="footer">
+      <p>
+        <a href="https://github.com/realtime-ai/realtime-audio-sdk" target="_blank">GitHub</a>
+        &nbsp;&bull;&nbsp;
+        <a href="https://github.com/realtime-ai/realtime-audio-sdk#readme" target="_blank">Documentation</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

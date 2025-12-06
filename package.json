@@ -19,9 +19,12 @@
   "scripts": {
     "prepare": "husky",
     "copy:wasm": "mkdir -p examples/public && cp node_modules/onnxruntime-web/dist/*.wasm node_modules/onnxruntime-web/dist/*.mjs examples/public/ 2>/dev/null || true",
+    "download:model": "mkdir -p examples/public/models && (test -f examples/public/models/silero_vad_v5.onnx || curl -fsSL -o examples/public/models/silero_vad_v5.onnx https://media.githubusercontent.com/media/snakers4/silero-vad/master/src/silero_vad/data/silero_vad_v5.onnx || echo 'Warning: Could not download VAD model')",
     "dev": "npm run copy:wasm && vite",
     "build": "tsc && vite build",
+    "build:examples": "npm run copy:wasm && npm run download:model && vite build --config vite.examples.config.ts",
     "preview": "vite preview",
+    "preview:examples": "vite preview --config vite.examples.config.ts",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",

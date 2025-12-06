@@ -71,7 +71,7 @@
   </div>
 
   <script type="module">
-    import { RTA } from '../../src/index.ts';
+    import { RTA } from '@/index.ts';
 
     let sdk = null;
     let ws = null;
@@ -100,7 +100,7 @@
           silenceDuration: 800,           // Shorter silence duration (800ms)
           preSpeechPadDuration: 300,
           minSpeechDuration: 100,         // Lower min duration to catch short utterances
-          modelPath: '/public/models/silero_vad_v5.onnx',
+          modelPath: '/models/silero_vad_v5.onnx',
         },
       },
     });
